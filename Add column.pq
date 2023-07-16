@@ -1,16 +1,6 @@
 
 
 
-////////// add a column
-
-= Table.AddColumn(
-    AddColumnSales, 
-    "Cost", 
-    each [Constrained Qty] * [ACG],
-    Number.Type
-)
-
-
 
 ////////// add a column
 
@@ -1267,7 +1257,7 @@ Max Av Last Cost
 ///
 
 = Table.AddColumn(
-    GroupRowsWithoutDates, 
+    FilterOutActualNullQty, 
     "ASP",
         each 
            [Sales] / [Qty]
@@ -1277,7 +1267,7 @@ Max Av Last Cost
 ////
 
 = Table.AddColumn(
-    AspColumn, 
+    ASPColumn, 
     "ACG",
         each 
            [Cost] / [Qty]
@@ -1401,11 +1391,11 @@ in
 //////
 
 = Table.AddColumn(
-    FilterOutZeroQty, 
-    "FAB.ASP",
+    RemoveSalesCost, 
+    "Sales",
         each
 
-        [Sales] / [Qty]
+        [ASP] * [Qty]
 
     , Number.Type
 )
@@ -1415,91 +1405,147 @@ in
 //////
 
 = Table.AddColumn(
-    CalculateAspColumn, 
-    "FAB.ACG",
+    ExpandCurrentFabAcg, 
+    "Final ASP",
         each
 
-        [Cost] / [Qty]
+            if
+                [ASP] is null
+            then
+                [Current FAB ASP.ASP]
+            else
+                [ASP]
 
     , Number.Type
 )
 
-
-
 //////
 
 = Table.AddColumn(
-    AspColumn, 
-    "Asp",
+    FinalAspColumn, 
+    "Final ACG",
         each
 
-        if
-            [Amended.ASP] = null
-        then
-            [Current ASP]
-        else
-            [Amended.ASP]
+            if
+                [ACG] is null
+            then
+                [Current FAB ACG.ACG]
+            else
+                [ACG]
 
     , Number.Type
 )
 
-//
+//////
 
-let
-    Source = Odbc.Query("dsn=_Data_01_MSSQL", "SELECT#(lf)#(tab)CONCAT(#(lf)        CONVERT(varchar , '1/') ,#(lf)        CONVERT(varchar , RIGHT(Inv_Dt_YYYYmm, 2) ) ,#(lf)        '/' ,#(lf)        CONVERT(varchar, LEFT(Inv_Dt_YYYYmm,4) )#(lf)#(tab))       #(tab)             AS 'Date',#(lf)#(tab)TRIM(AltCustName)#(tab)#(tab) AS Customer,#(lf)#(tab)TRIM(item_no)#(tab)#(tab) #(tab) AS SKU,#(lf)#(tab)TRIM(item_desc_1)#(tab) #(tab) AS Product,#(lf)#(tab)TRIM(prod_cat_desc)#(tab)#(tab) AS Brand,#(lf)#(tab)SUM(qty_to_ship)#(tab)#(tab) AS Qty,#(lf)#(tab)SUM(sls_amt)#(tab)#(tab)#(tab) AS Sales#(lf)FROM#(lf)#(tab)v_Tim_OE_Sales_history_all_data #(lf)WHERE#(lf)#(tab)prod_cat * 1 > 19#(tab)#(tab)#(tab)#(tab)AND#(lf)#(tab)Inv_Dt_YYYYmm * 1 > 202206#(tab)#(tab)AND#(lf)#(tab)TRIM(AltCustName) = 'National Pharmacies' AND#(lf)#(tab)(qty_to_ship) <> 0#(lf)GROUP BY#(lf)#(tab)CONCAT(#(lf)        CONVERT(varchar , '1/') ,#(lf)        CONVERT(varchar , RIGHT(Inv_Dt_YYYYmm, 2) ) ,#(lf)        '/' ,#(lf)        CONVERT(varchar, LEFT(Inv_Dt_YYYYmm,4) )#(lf)#(tab)), #(lf)#(tab)TRIM(AltCustName),#(lf)#(tab)TRIM(item_no),#(lf)#(tab)TRIM(item_desc_1),#(lf)#(tab)TRIM(prod_cat_desc)#(tab);"),
-    ChangeType = Table.TransformColumnTypes(Source,{{"Date", type date}}),
-    SortRows = Table.Sort(ChangeType,{{"Date", Order.Ascending}}),
-    AddCustom = Table.AddColumn(SortRows, "Rebate %", each 0.08, Number.Type),
-    AddCustom1 = Table.AddColumn(AddCustom, "Rebate $", each Number.Round( [#"Rebate %"] * [Sales] ,2 ), Number.Type)
-in
-    AddCustom1
+= Table.AddColumn(
+    SalesColumn, 
+    "Cost",
+        each
 
+            [Qty] * [ACG]
+
+    , Number.Type
+)
 
 //////
 
 = Table.AddColumn(
-    ChangeType, 
-    "Date",
+    CostColumn, 
+    "Asp Acg Missing",
         each
 
-        Date.ToText([Column1], "yyyyMM") 
+            if
+                [ASP] = null
+            then
+                ""
+            else
+                if
+                    [ACG] = null
+                then
+                    ""
+                else
+                    "ok"
 
     , Text.Type
-) 
-
+)
 
 //////
 
 = Table.AddColumn(
-    ChangeType, 
-    "Date",
+    RemoveMissingAspAcgColumn, 
+    "YYYYMM",
         each
 
-        Date.ToText([Column1], "yyyyMM") 
+            Date.ToText ( [Date] , "yyyyMM" )
+         
+    , Text.Type
+)
+
+//////
+
+= Table.AddColumn(
+    ChangeYMColumnToNumber, 
+    "Type",
+        each
+                "Forecast"
+    , Text.Type
+)
+
+//////
+
+= Table.AddColumn(
+    FilterRows, 
+    "ACG Increase",
+        each
+            [New ACG] - [Current ACG]
+    , Number.Type
+)
+
+//////
+
+= Table.AddColumn(
+    AcgIncreaseColumn, 
+    "ACG Increase %",
+        each
+            [ACG Increase] / [Current ACG]
+    , Number.Type
+)
+
+//////
+
+= Table.AddColumn(
+    TransposeTable, 
+    "Heading",
+        each
+            if
+                [Column6] = null 
+            then
+                [Column7]
+            else
+                [Column6]
 
     , Text.Type
-) 
+)
 
-///
-
-Text.Remove(
-        _,
-        {"0".."9"}
-        )
-
-//////
+///////
 
 = Table.AddColumn(
-    ReorderColumns, 
-    "ASP Variance",
+    RenameColumns, 
+    "ASP",
         each
 
-        if
-            [Macola.ASP] = null
-        then
-            null
-        else
-            [FAB.ASP] - [Macola.ASP]
+            if
+                [Effective Date] = null
+            then
+                [Current ASP]
+            else
+                if
+                    [Effective Date] > [Date]
+                then
+                    [Current ASP]
+                else
+                    [Current ASP] * (1 + [Percent Change] )
 
     , Number.Type
 )
@@ -1507,16 +1553,37 @@ Text.Remove(
 //////
 
 = Table.AddColumn(
-    AspVariance, 
-    "ACG Variance",
+    NewAsp, 
+    "New Sales",
         each
+            [Qty] * [ASP]
+    , Number.Type
+)
 
-        if
-            [Macola.ACG] = null
-        then
-            null
-        else
-            [FAB.ACG] - [Macola.ACG]
+
+//////
+
+= Table.AddColumn(
+    NewSales, 
+    "Sales Increase",
+        each
+            [New Sales] - [Sales]
+    , Number.Type
+)
+
+//////
+
+= Table.AddColumn(
+    GroupRows, 
+    "Sales Increase Percent",
+        each
+        
+            if
+                [Sales Increase] <> 0
+            then
+                [Sales Increase] / [Sales]
+            else
+                0
 
     , Number.Type
 )
@@ -1524,16 +1591,51 @@ Text.Remove(
 //////
 
 = Table.AddColumn(
-    AcgVariance, 
-    "Sales Impact",
+    RemoveColumns, 
+    "Date Of Increase",
+        each
+        
+            if
+                [Month] < #date(2023,7,1)
+            then
+                #date(2023,7,1)
+            else
+                [Month]
+
+    , Date.Type
+)
+
+//////
+
+= Table.AddColumn(
+    RemoveColumns2, 
+    "Merge SKU Date",
+        each
+        
+            [SKU] & [Date Of Increase]
+
+    , Text.Type
+)
+
+//////
+
+= Table.AddColumn(
+    RemoveColumns, 
+    "ACG Merge Early",
         each
 
-        if
-            [Macola.ASP] = null
-        then
-            null
-        else
-            [Qty] * [FAB.ASP]
+            if
+                // for all rows where no cost chnages, return standard ACG
+                [Date Effective] = null 
+            then
+                [Adjusted ACG]
+            else
+                if
+                    [Date Effective] <= [Date]
+                then
+                    [New ACG]
+                else
+                    [Adjusted ACG]
 
     , Number.Type
 )
@@ -1541,16 +1643,22 @@ Text.Remove(
 //////
 
 = Table.AddColumn(
-    SalesImpact , 
-    "Cost Impact",
+    MergeAcg1, 
+    "ACG Merge Late",
         each
 
-        if
-            [Macola.ACG] = null
-        then
-            null
-        else
-            [Qty] * [ACG Variance]
+            if
+                // for all rows where no cost chnages, return standard ACG
+                [Max Date.Date Effective] = null 
+            then
+                [ACG Merge Early]
+            else
+                if
+                    [Max Date.Date Effective] <= [Date] 
+                then
+                    [Max Date.New ACG]
+                else
+                    [ACG Merge Early]
 
     , Number.Type
 )
@@ -1558,16 +1666,56 @@ Text.Remove(
 //////
 
 = Table.AddColumn(
-    AppendGrandTotal , 
-    "Reference",
+    RemoveColumns, 
+    "ACG Merge1",
         each
 
-        if
-            [Invoice Date] = null
-        then
-            "7-Eleven Stores"
-        else
-            "7-Eleven Rebate " & Date.ToText([Invoice Date] , "MMM-yyyy" )
+            if
+                [Date Effective] = null 
+            then
+                [Adjusted ACG]
+            else
+                if
+                    [Date Effective]
+
+    , Number.Type
+)
+
+//////
+
+= Table.AddColumn(
+    Merge2, 
+    "Final ACG",
+        each
+
+            if
+                [ACG Merge Late] > [Adjusted ACG]
+            then
+                [ACG Merge Late]
+            else
+                [Adjusted ACG]
+
+    , Number.Type
+)
+
+//////
+
+= Table.AddColumn(
+    FinalAcg, 
+    "Adjusted Cost Mo",
+        each
+            [Final ACG] * [Qty]
+
+    , Number.Type
+)
+
+///////
+
+= Table.AddColumn(
+    FinalCost, 
+    "Total Increase",
+        each
+            [Cost] - [Adjusted Cost Mo]
 
     , Number.Type
 )
