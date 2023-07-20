@@ -101,3 +101,6 @@ let
     #"Changed Type" = Table.TransformColumnTypes(tbl_Order_Types_Table,{{"Order Type", type text}, {"Order Type SB", type text}, {"Order Type Combined", type text}, {"Description", type text}, {"Comment", type text}, {"Type", type text}})
 in
     #"Changed Type"
+
+
+    ///testing 
