@@ -1712,10 +1712,9 @@ in
 ///////
 
 = Table.AddColumn(
-    FinalCost, 
-    "Total Increase",
+    FirstSaleDateTypeDate, 
+    "Last Sale Date",
         each
-            [Cost] - [Adjusted Cost Mo]
-
-    , Number.Type
+            Date.AddDays([First Sale Date] , 365*3 )
+    , Date.Type
 )
