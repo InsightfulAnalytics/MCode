@@ -13,10 +13,15 @@
 ////////
 
 = Table.SelectRows( 
-    SortByDate , 
+    DateType2 , 
     each (
         List.Contains(
-            SkuList,
-            [SKU]) = true 
+            LedgerList,
+            [GL]) = true 
         )
     )
+
+
+///
+
+= Table.SelectRows(factSales, each List.Contains(requiredProductNumbers, [Product]))
