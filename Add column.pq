@@ -1718,3 +1718,94 @@ in
             Date.AddDays([First Sale Date] , 365*3 )
     , Date.Type
 )
+
+///////
+
+= Table.SelectRows(ExpandSkuBrandList, each [Date] >= FirstBudgetMonth)
+
+///////
+
+= Table.AddColumn(
+    FilterCategories, 
+    "Date",
+        each
+            #date([Year] , [Month] , 1 )
+    , Date.Type
+)
+
+//
+
+let
+    Source = YourTable, // Replace YourTable with your actual table name
+    MinDate = List.Min(Dates), // Get the minimum date from the "Dates" list
+    MaxDate = List.Max(Dates), // Get the maximum date from the "Dates" list
+    FilteredRows = Table.SelectRows(Source, each [Date] >= MinDate and [Date] <= MaxDate) // Filter the "Date" column in the table
+in
+    FilteredRows
+
+///
+
+let
+    Source = Excel.Workbook(File.Contents("M:\Finance\Reporting\P&L\Profit & Loss Summary.xlsm"), null, true),
+    Append_Table = Source{[Item="Append",Kind="Table"]}[Data],
+    FilterCategories = Table.SelectRows(Append_Table, each ([Category] = "Parcel buy disc" or [Category] = "Sales")),
+    DateColumn = 
+        Table.AddColumn(
+            FilterCategories, 
+            "Date",
+                each
+                    #date([Year] , [Month] , 1 )
+            , Date.Type
+        )
+    MinDate = List.Min(Dates), // Get the minimum date from the "Dates" list
+    MaxDate = List.Max(Dates), // Get the maximum date from the "Dates" list
+    FilteredDates = Table.SelectRows(DateColumn, each [Date] >= MinDate and [Date] <= MaxDate  ) // Filter the "Date" column in the table
+in
+    DateColumn
+
+///
+
+let
+    Source = Excel.Workbook(Web.Contents("https://keypharmau.sharepoint.com/sites/KeyBrandMarketing/Shared%20Documents/Finance%20Reporting/A&P%20Tracker/A&P%20Tracker%20FY24_20230727%20v3-5.xlsm"), null, true),
+    ANTIVIRAL_Sheet = Source{[Item="ANTIVIRAL",Kind="Sheet"]}[Data],
+    RemoveOtherColumns = Table.SelectColumns(ANTIVIRAL_Sheet,{"Column1", "Column2", "Column3", "Column4", "Column5", "Column6" , "Column7" }),
+    BrandNameDrillDown = RemoveTopRows{0}[Column2],
+    RemoveTopRows = Table.Skip(RemoveOtherColumns,2)
+in
+    RemoveTopRows
+
+//
+
+= Table.AddColumn(
+    ChangeTypes, 
+    "Brand",
+        each
+            BrandNameDrillDown
+    , Date.Type
+)
+
+//
+
+= Table.AddColumn(
+    RenameColumns, 
+    "Activity Date",
+        each
+            if  [Month of Promo Activity] = "Jul"   then    #date(2023,7,1) else
+            if  [Month of Promo Activity] = "Aug"   then    #date(2023,8,1) else
+            if  [Month of Promo Activity] = "Sep"   then    #date(2023,9,1) else
+            if  [Month of Promo Activity] = "Oct"   then    #date(2023,10,1) else
+            if  [Month of Promo Activity] = "Nov"   then    #date(2023,11,1) else
+            if  [Month of Promo Activity] = "Dec"   then    #date(2023,12,1) else
+            if  [Month of Promo Activity] = "Jan"   then    #date(2024,1,1) else
+            if  [Month of Promo Activity] = "Feb"   then    #date(2024,2,1) else
+            if  [Month of Promo Activity] = "Mar"   then    #date(2024,3,1) else
+            if  [Month of Promo Activity] = "Apr"   then    #date(2024,4,1) else
+            if  [Month of Promo Activity] = "May"   then    #date(2024,5,1) else
+            if  [Month of Promo Activity] = "Jun"   then    #date(2024,6,1) else
+                #date(2030,7,1)
+    , Date.Type
+)
+
+
+
+
