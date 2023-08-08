@@ -89,5 +89,39 @@ let
 in
     ExpandCategoryBrand
 
+///
 
+let
+    Source = "",
+    DateMonth = Date.Month(LastActDate),
+    PeriodText = 
+    
+        if
+            // if month is >= 7 & <=9
+            DateMonth  > 6
+        then
+            // take away 6 and add a 0 (from period 1 to 6)
+            "0" & Number.ToText(DateMonth - 6 )
+        else 
+            if
+
+                DateMonth < 4 
+            then
+                "0" & Number.ToText(DateMonth + 6 )
+            else 
+                Number.ToText(DateMonth + 6) ,
+    FYear = Date.Year(LastActDate),
+    FYearText = 
+
+        if
+            DateMonth > 6 
+        then
+            Number.ToText(FYear + 1 )
+        else
+            Number.ToText(FYear ),
+
+    FYearPeriod = FYearText & PeriodText
+
+in
+    FYearPeriod
 
