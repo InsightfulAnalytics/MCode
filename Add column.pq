@@ -1806,6 +1806,43 @@ in
     , Date.Type
 )
 
+//
+
+= Table.AddColumn(
+    Source, 
+    "Location
+    ",
+        each
+            if
+                [Country] = "AUS"
+            then
+                [Billing Address 1] & " " & 
+                [Billing Address 2] & " " &
+                [Billing Address 3] & " " &
+                "Australia"
+            else
+                null
+    , Text.Type
+)
+
+////
 
 
+let
+    Source = Odbc.Query("dsn=_Data_01_MSSQL", "/*  Order billing and ship to address dim table   */#(lf)#(lf)SELECT#(lf)     ord_no                 AS 'Order Number'#(lf)    ,MAX(oe_po_no)          AS 'Purchase Order Number'#(lf)    ,MAX(bill_to_addr_1)    AS 'Billing Address 1'#(lf)    ,MAX(bill_to_addr_2)    AS 'Billing Address 2'#(lf)    ,MAX(bill_to_addr_3)    AS 'Billing Address 3'#(lf)    ,MAX(ship_to_name)      AS 'Ship To Name'#(lf)    ,MAX(ship_to_addr_3)    AS 'Ship To Address3'#(lf)    ,MAX(CASE #(lf)        WHEN CHARINDEX('NSW', ship_to_addr_3) > 0 THEN 'NSW'#(lf)        WHEN CHARINDEX('VIC', ship_to_addr_3) > 0 THEN 'VIC'#(lf)        WHEN CHARINDEX('QLD', ship_to_addr_3) > 0 THEN 'QLD'#(lf)        WHEN CHARINDEX('NT', ship_to_addr_3) > 0 THEN 'NT'#(lf)        WHEN CHARINDEX('SA', ship_to_addr_3) > 0 THEN 'SA'#(lf)        WHEN CHARINDEX('WA', ship_to_addr_3) > 0 THEN 'WA'#(lf)        WHEN CHARINDEX('TAS', ship_to_addr_3) > 0 THEN 'TAS'#(lf)        ELSE 'Other'#(lf)    END)                    AS 'State'#(lf)    ,MAX(CASE #(lf)        WHEN CHARINDEX('NSW', ship_to_addr_3) > 0 THEN 'AUS'#(lf)        WHEN CHARINDEX('VIC', ship_to_addr_3) > 0 THEN 'AUS'#(lf)        WHEN CHARINDEX('QLD', ship_to_addr_3) > 0 THEN 'AUS'#(lf)        WHEN CHARINDEX('NT', ship_to_addr_3) > 0 THEN 'AUS'#(lf)        WHEN CHARINDEX('SA', ship_to_addr_3) > 0 THEN 'AUS'#(lf)        WHEN CHARINDEX('WA', ship_to_addr_3) > 0 THEN 'AUS'#(lf)        WHEN CHARINDEX('TAS', ship_to_addr_3) > 0 THEN 'AUS'#(lf)        ELSE 'INTERNATIONAL'#(lf)    END)                    AS 'Country'#(lf)    ,MAX(ship_to_country)   AS 'Ship To Country'#(lf)FROM#(lf)    OEHDRHST_SQL#(lf)GROUP BY#(lf)    ord_no;")
+
+    = Table.AddColumn(
+    Source, 
+    "Location
+    ",
+        each
+            Number.FromText([Ship To Address3])
+    , Text.Type
+)
+
+    ExtractedNumber = Text.RegexReplace([Ship To Address3], "[^0-9]", ""),
+    FourDigitNumber = Text.End(ExtractedNumber, 4)
+
+in
+    Source
 
