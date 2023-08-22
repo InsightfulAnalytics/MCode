@@ -1846,3 +1846,41 @@ let
 in
     Source
 
+/////
+
+= Table.SelectRows(Source, each ([Kind] = "Sheet") and ([Name] <> "Total"))
+//
+
+= Table.SelectRows(
+    Data, 
+    each (
+        [Column3] <> null
+    )
+)
+
+//
+
+= Table.RemoveColumns(
+    [Data], 
+    {"Column3"}
+)
+
+
+//
+
+= Table.AddColumn(
+    KeepOnlyDataColumns, 
+    "Location",
+        each
+            Table.RemoveColumns(
+                [Data], 
+                {"Column3"}
+            )
+)
+
+//
+
+= Table.SelectRows(Source, each ([Kind] = "Sheet") and ([Name] <> "Total"))
+
+
+

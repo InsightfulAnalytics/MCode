@@ -395,6 +395,47 @@ in
     Source
 
 
+////
 
+= Table.AddColumn(
+    ChangeTypes, 
+    "Order Month",
+        each
+            if  [Name] = "Jul"   then    #date(2023,7,1) else
+            if  [Name] = "Aug"   then    #date(2023,8,1) else
+            if  [Name] = "Sep"   then    #date(2023,9,1) else
+            if  [Name] = "Oct"   then    #date(2023,10,1) else
+            if  [Name] = "Nov"   then    #date(2023,11,1) else
+            if  [Name] = "Dec"   then    #date(2023,12,1) else
+            if  [Name] = "Jan"   then    #date(2024,1,1) else
+            if  [Name] = "Feb"   then    #date(2024,2,1) else
+            if  [Name] = "Mar"   then    #date(2024,3,1) else
+            if  [Name] = "Apr"   then    #date(2024,4,1) else
+            if  [Name] = "May"   then    #date(2024,5,1) else
+            if  [Name] = "Jun"   then    #date(2024,6,1) else
+                #date(2030,7,1)
+    , Date.Type
+)
 
+////
+
+= Table.AddColumn(
+    ChangeTypes, 
+    "Order Month",
+        each
+            if  [Name] = "July"   then    #date(2023,7,1) else
+            if  [Name] = "August"   then    #date(2023,8,1) else
+            if  [Name] = "September"   then    #date(2023,9,1) else
+            if  [Name] = "October"   then    #date(2023,10,1) else
+            if  [Name] = "November"   then    #date(2023,11,1) else
+            if  [Name] = "December"   then    #date(2023,12,1) else
+            if  [Name] = "January"   then    #date(2024,1,1) else
+            if  [Name] = "February"   then    #date(2024,2,1) else
+            if  [Name] = "March"   then    #date(2024,3,1) else
+            if  [Name] = "April"   then    #date(2024,4,1) else
+            if  [Name] = "May"   then    #date(2024,5,1) else
+            if  [Name] = "June"   then    #date(2024,6,1) else
+                "not found"
+    , Date.Type
+)
 	
