@@ -1810,8 +1810,7 @@ in
 
 = Table.AddColumn(
     Source, 
-    "Location
-    ",
+    "Location",
         each
             if
                 [Country] = "AUS"
@@ -1881,6 +1880,132 @@ in
 //
 
 = Table.SelectRows(Source, each ([Kind] = "Sheet") and ([Name] <> "Total"))
+
+
+///
+
+= Table.AddColumn(
+    ChangeTypeDateValue, 
+    "Amount",
+        each
+            if
+                Text.Contains([Value], "for" ) 
+            then
+                2
+            else
+                if
+                    Text.Contains([Value] , "/" )
+                then
+                    [ConvertedDate]
+                else
+                    [Value]
+    , Number.Type
+)
+
+///////////
+
+
+
+
+
+/////
+
+//code that works for the date 45112 formatted as a number
+
+let
+    Source = Excel.Workbook(File.Contents("\\keypharm.local\keydata\Data\SALES\Glenn Buxton\Supermarkets\Promotional Calendar.xls"), null, true),
+    FY1 = Source{[Name="FY24"]}[Data],
+    RemoveTopRow = Table.Skip(FY1,1),
+    TransposeTable = Table.Transpose(RemoveTopRow),
+    ChangeTypeFirstColumn = Table.TransformColumnTypes(TransposeTable,{{"Column1", type text}}),
+    ConvertTextToNumber = 
+        Table.AddColumn(
+            ChangeTypeFirstColumn, 
+            "Try", 
+            each 
+                let 
+                    firstFiveChars = Text.Start([Column1], 5),
+                    attemptedNumber = try Number.FromText(firstFiveChars) otherwise null,
+                    firstChar = Text.Start([Column1], 1),
+                    isNumber = try Number.FromText(firstChar) otherwise null,
+                    isDateNumber = try Number.FromText([Column1]) otherwise null
+
+                in
+                    if 
+                        attemptedNumber <> null 
+                    then
+                        attemptedNumber
+                    else
+                        if 
+                            isNumber <> null 
+                        then 
+                            if 
+                                isDateNumber <> null 
+                            then
+                                DateTime.ToText(#date(1899, 12, 30) + Duration.From(isDateNumber), "dd/MM/yyyy")
+                            else
+                                try 
+                                    DateTime.ToText(DateTime.From([Column1]), "dd/MM/yyyy") 
+                                otherwise
+                                    [Column1]
+                        else 
+                            [Column1]
+                        
+            ,type any 
+        ),
+    NumberToDate = Table.TransformColumnTypes(ConvertTextToNumber,{{"Try", type date}})
+in
+    NumberToDate
+
+
+/////////
+
+let
+    Source = ... ,  // Your source table
+    AddOneMonth = Table.TransformColumns(ChangeType, {{"Date", each Date.AddMonths(_, 1), type date}})
+in
+    AddOneMonth
+
+/////////////////////
+
+= Table.AddColumn(
+    GroupRows, 
+    "ACG Increase",
+        each
+            [Final ACG] - [ACG]
+    , Date.Type
+)
+
+/////////////////////
+
+= Table.AddColumn(
+    AcgIncreaseColumn, 
+    "ACG Increase %",
+        each
+            [ACG Increase] / [ACG]
+    , Number.Type
+)
+
+/////////////////////
+
+= Table.AddColumn(
+    AcgPercentIncreaseColumn, 
+    "Cost Increase",
+        each
+            [Current Cost] - [Adjusted Cost]
+    , Number.Type
+)
+
+/////////////////////
+
+= Table.AddColumn(
+    CostIncreaseColumn, 
+    "Average Monthly Increase",
+        each
+            [Cost Increase] / [Count Of Months]
+    , Number.Type
+)
+
 
 
 
