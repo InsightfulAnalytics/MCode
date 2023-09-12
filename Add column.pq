@@ -2006,6 +2006,349 @@ in
     , Number.Type
 )
 
+/////////////////////
+
+= Table.AddColumn(
+    RemoveCostColumns, 
+    "Adjusted ASP",
+        each
+            if
+                [Price List.ASP] = null and [Macola.ASP] = null
+            then
+                [FAB.ASP]
+            else
+                if
+                    [Price List.ASP] = null
+                then
+                    [Macola.ASP]
+                else
+                    [FAB.ASP]
+    , Number.Type
+)
+
+///////
+
+= Table.AddColumn(
+    AspVariance, 
+    "Sales Impact",
+        each
+
+            if
+                [ASP Variance] = null
+            then
+                null
+            else
+                [Qty] * [ASP Variance]
+
+    , Number.Type
+)
+
+///
+
+= Table.AddColumn(
+    AdjustedAsp, 
+    "ASP Variance",
+        each
+
+            [FAB.ASP] - [Adjusted ASP]  
+
+    , Number.Type
+)
 
 
+/////
 
+let
+  // Perform a left outer join between "Current FAB" and "Recent Sale - SKU FAB Channel" tables on "SKU" and "Channel" columns
+  Source = Table.NestedJoin(
+    #"Current FAB", 
+    {"SKU", "Channel"}, 
+    #"Recent Sale - SKU FAB Channel", 
+    {"SKU", "Channel"}, 
+    "Recent Sale - SKU Customer", 
+    JoinKind.LeftOuter
+  ), 
+  
+  // Filter out rows where the "Qty" column is zero
+  FilterOutZeroQty = Table.SelectRows(Source, each ([Qty] <> 0)), 
+  
+  // Add a new column "FAB.ASP" that calculates the average selling price (ASP) as Sales/Qty, rounded to 2 decimal places
+  CalculateAspColumn = Table.AddColumn(
+    FilterOutZeroQty, 
+    "FAB.ASP", 
+    each Number.Round([Sales] / [Qty], 2), 
+    Number.Type
+  ), 
+  
+  // Expand the "ASP" column from the "Recent Sale - SKU Customer" table into a new column "Macola.ASP"
+  ExpandMacolaAspAcg = Table.ExpandTableColumn(
+    CalculateAspColumn, 
+    "Recent Sale - SKU Customer", 
+    {"ASP"}, 
+    {"Macola.ASP"}
+  ), 
+  
+  // Perform another left outer join with the "Price List" table on "SKU" and "Channel" columns
+  MergePriceList = Table.NestedJoin(
+    ExpandMacolaAspAcg, 
+    {"SKU", "Channel"}, 
+    #"Price List", 
+    {"SKU", "Channel"}, 
+    "Price List", 
+    JoinKind.LeftOuter
+  ), 
+  
+  // Expand the "ASP" column from the "Price List" table into a new column "Price List.ASP"
+  ExpandPriceList = Table.ExpandTableColumn(
+    MergePriceList, 
+    "Price List", 
+    {"ASP"}, 
+    {"Price List.ASP"}
+  ), 
+
+    // Add a new column "Adjusted ASP1" that takes values from "FAB.ASP", "Macola.ASP" based on conditions
+  AdjustedAsp1 = Table.AddColumn(
+    ExpandPriceList, 
+    "Adjusted ASP1", 
+    each 
+      if 
+        [Macola.ASP] = null
+      then
+        [FAB.ASP]
+      else
+        [Macola.ASP]
+    ,Number.Type
+  ), 
+  
+  // Add a new column "Adjusted ASP2" that uses price list prices when they take effect
+  AdjustedAsp2 = 
+  Table.AddColumn(
+      AdjustedAsp1, 
+        "Adjusted ASP2", 
+        each 
+            if 
+                [Price List.ASP] = null
+            then
+                [Adjusted ASP1]
+            else
+                if
+                    [Price List.Effective Date] >= [Date]
+                then
+                    [Price List.ASP]
+                else
+                    [Adjusted ASP1]
+        ,Number.Type
+    )
+  , 
+  
+  // Add a new column "ASP Variance" that calculates the difference between "Adjusted ASP" and "FAB.ASP"
+  AspVariance = Table.AddColumn(
+    AdjustedAsp, 
+    "ASP Variance", 
+    each [Adjusted ASP] - [FAB.ASP], 
+    Number.Type
+  ), 
+  
+  // Add a new column "Sales Impact" that multiplies "ASP Variance" by "Qty" if "ASP Variance" is not null
+  SalesImpact = Table.AddColumn(
+    AspVariance, 
+    "Sales Impact", 
+    each if [ASP Variance] = null then null else [Qty] * [ASP Variance], 
+    Number.Type
+  )
+in
+  SalesImpact
+
+
+//////////////
+
+= Table.AddColumn(
+    ExpandActuals, 
+        "Sort By", 
+        each 
+            if
+                [Brand] is null
+            then
+                [Act.Brand] & " - " & [Act.Category]
+            else
+                [Brand] & " - " & [Account Description]
+    ,Text.Type
+)
+
+//////////////
+
+= Table.AddColumn(
+    ChangeTypesColumns, 
+        "Amount1", 
+        each 
+            if
+                Text.Contains([Value], "/" ) = true
+            then
+                [Value] 
+            else
+                null
+    ,Text.Type
+)
+
+//////////////
+
+= Table.AddColumn(
+    ChangeTypeNumber, 
+        "Amount", 
+        each 
+            if
+                [Amount1] is null
+            then
+                [Value] * 1
+            else
+                [Amount1]
+    ,Number.Type
+)
+
+
+//////////
+
+= Table.AddColumn(
+    ChangeEffectiveDateType, 
+        "Old Sales", 
+        each 
+            if
+                [Effective Date] = null
+                then
+                    [Sales]
+                else
+                    if
+                        [Effective Date] <= [Date]
+                    then
+                        if
+                            [FAB ASP Before Change] * [Qty] > [Sales]
+                        then
+                            [Sales]
+                    else
+                        [Sales]
+    ,Number.Type
+)
+
+//////////
+
+
+= Table.AddColumn(
+    AddChannelColumn, 
+        "Sales Variance", 
+        each 
+            if
+                [Old Sales] > [Sales]
+            then
+                [Value] * 1
+            else
+                [Amount1]
+    ,Number.Type
+)
+
+//////////
+
+
+= Table.AddColumn(
+    AddChannelColumn, 
+        "Increase", 
+        each 
+            [NEW PRICE] - [CURRENT PRICE]  
+            
+    ,Number.Type
+)
+
+//////////
+
+= Table.AddColumn(
+    IncreaseAmount, 
+        "Increase Percent", 
+        each 
+            [Increase] / [CURRENT PRICE]
+            
+    ,Number.Type
+)
+
+//////////
+
+= Table.AddColumn(
+    ChangesTypesAgain1, 
+        "Sales Less Increase", 
+        each 
+            if
+                [Effective Date.1] = null
+                then
+                    [Sales]
+                else
+                    if
+                        [Effective Date.1] <= [Date]
+                    then
+                        [Sales] / (1+[Increase Percent.1]) 
+                    else
+                        [Sales]
+    ,Number.Type
+)
+
+//////////
+
+= Table.AddColumn(
+    SalesLessIncrease, 
+        "Increase Impact", 
+        each 
+            [Sales] - [Sales Less Increase]
+            
+    ,Number.Type
+)
+
+
+///////
+
+= Table.AddColumn(
+    NewSalesColumn, 
+    "Cost New",
+        each 
+            if
+                [Adjusted ACG] = null
+            then
+                [Cost]
+            else
+                [Qty] * [Adjusted ACG]
+    , Number.Type
+)
+
+///
+
+= Table.AddColumn(
+    ExpandAspIncreases, 
+        "Sales New", 
+        each 
+            if
+                [Adjusted ASP] is null
+            then
+                [Sales]
+            else
+                [Adjusted ASP] * [Qty]
+    ,Number.Type
+)
+
+///
+
+= Table.AddColumn(
+    RemoveAspAcg, 
+        "Filter Zeros", 
+        each 
+            [Sales] + [Cost] + [Qty]
+    ,Number.Type
+)
+
+///
+
+= Table.AddColumn(
+    ReorderColumns, 
+        "YYYYMM", 
+        each 
+            let
+                TextDate = Text.From([Date])
+            //Text.End(Text.From([Date]),4)
+            Text.End(TextDate,4)
+    ,Number.Type
+)
