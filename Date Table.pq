@@ -144,7 +144,7 @@ let
     RenameColumns = Table.RenameColumns(Source,{{"MonthShortName", "Month Name Short"}, {"Fiscal Year", "FYear"}, {"FiscalYearOffset", "FYearOffset"}, {"Fiscal Quarter", "FQuarter"}, {"Fiscal Period", "Period"}, {"Fiscal Week", "FWeek"}, {"Fiscal Year & Week", "FYear & Week"} , {"Month Name", "Month"} }),
     AddCustom = Table.AddColumn(RenameColumns, "Year & Month", each Number.ToText([Year]) & " " & [Month Name Short], Text.Type)
 in
-    #"AddCustom"
+    AddCustom
 
 
 
