@@ -63,8 +63,53 @@
 /////
 
 
+= Table.AddColumn(
+    AddTableColumn, 
+    "PromoteHeaders",
+        each
+            Table.PromoteHeaders(
+                [AddTableColumn],
+                [PromoteAllScalars=true]
+            )
+)
+/////////////////// Me
 
+let
+    Source = SharePoint.Files("https://keypharmau.sharepoint.com/sites/PowerBIDataFiles/", [ApiVersion = 15]),
+    FilterLogFilesOnly = Table.SelectRows(Source, each ([Folder Path] = "https://keypharmau.sharepoint.com/sites/PowerBIDataFiles/Shared Documents/PbiLogs/")),
+    KeepContentColumnOnly = Table.SelectColumns(FilterLogFilesOnly,{"Content"}),
+    AddTableColumn = Table.AddColumn(KeepContentColumnOnly, "Custom", each Csv.Document([Content])),
+    Custom1 = Table.AddColumn(
+    AddTableColumn, 
+    "PromoteHeaders",
+        each
+            Table.PromoteHeaders(
+                [AddTableColumn],
+                [PromoteAllScalars=true]
+            )
+)
+in
+    Custom1
 
+//////////////////// GPT
+
+let
+    Source = SharePoint.Files("https://keypharmau.sharepoint.com/sites/PowerBIDataFiles/", [ApiVersion = 15]),
+    FilterLogFilesOnly = Table.SelectRows(Source, each ([Folder Path] = "https://keypharmau.sharepoint.com/sites/PowerBIDataFiles/Shared Documents/PbiLogs/")),
+    KeepContentColumnOnly = Table.SelectColumns(FilterLogFilesOnly,{"Content"}),
+    AddTableColumn = Table.AddColumn(KeepContentColumnOnly, "Custom", each Csv.Document([Content])),
+    Custom1 = 
+    
+    Table.AddColumn(
+        AddTableColumn, 
+        "PromoteHeaders",
+        each Table.PromoteHeaders(
+            [Custom],  // Use the "Custom" column here
+            [PromoteAllScalars=true]
+        )
+    )
+in
+    Custom1
 
 
 

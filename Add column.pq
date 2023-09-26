@@ -2352,3 +2352,39 @@ in
             Text.End(TextDate,4)
     ,Number.Type
 )
+
+///
+
+= Table.AddColumn(
+    RemoveColumns, 
+        "Sales", 
+        each 
+            [Qty] * [NPD.ASP]
+    ,Number.Type
+)
+
+///
+
+= Table.AddColumn(
+    SalesColumnCalculated, 
+        "Cost", 
+        each 
+            [Qty] * [NPD.ACG]
+    ,Number.Type
+)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

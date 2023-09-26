@@ -438,4 +438,19 @@ in
                 "not found"
     , Date.Type
 )
-	
+
+
+//// YYYYMM from dates column
+
+= Table.AddColumn(
+    ReorderColumns, 
+        "YYYYMM", 
+        each 
+            let
+                Year = Date.Year([Date]),
+                Month = Date.Month([Date]),
+                YYYYMM = Text.From(Year) & Text.PadStart(Text.From(Month), 2, "0")
+            in
+                Number.FromText(YYYYMM)
+    ,Int64.Type
+)
