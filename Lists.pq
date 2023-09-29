@@ -8,6 +8,15 @@
 //
 
 
-
+    = 
+    Table.AddColumn(
+        ReorderColumns,
+        "Remove24Bud",
+        each 
+            List.ContainsAny(
+                {}
+                
+            )
+    )
 
 

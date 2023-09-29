@@ -111,6 +111,38 @@ let
 in
     Custom1
 
+/////////////
+
+let
+    Source = #"User Logs",
+    GroupRows = Table.Group(Source, {"UserKey", "UserId"}, {{"Count", each Table.RowCount(_), Int64.Type}}),
+    RemoveColumns = Table.RemoveColumns(GroupRows,{"Count"}),
+    NameFromEmailColumn = Table.AddColumn(
+            RemoveColumns, 
+            "User Name", 
+            each 
+                Text.Upper(
+                        Text.Start(Text.BeforeDelimiter([UserId], "@"), 1)) & " " & 
+                        Text.Middle(Text.BeforeDelimiter([UserId], "@"), 1, 
+                        Text.Length(Text.BeforeDelimiter([UserId], "@")) - 1)
+        , Text.Type),
+    RenameColumn = Table.RenameColumns(NameFromEmailColumn,{{"UserId", "User Email"}})
+in
+    RenameColumn
+
+////////////////
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

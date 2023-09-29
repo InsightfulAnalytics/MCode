@@ -2373,6 +2373,114 @@ in
     ,Number.Type
 )
 
+///
+
+= Table.AddColumn(
+    ChangeTypes, 
+        "FilterOutFy24Bud", 
+        each 
+            Number.ToText([Financial Year]) & " " & [Group] & " " & [Type]
+    ,Text.Type
+)
+
+
+/////////
+
+
+
+let
+    Source = Excel.Workbook(File.Contents("C:\\Users\\tosborn\\OneDrive - Key Pharmaceuticals\\Desktop\\Chat GPT ADA - Woolies Data.xlsx"), null, true),
+    SheetData = Source{[Item="Data1", Kind="Sheet"]}[Data],
+
+    // Convert the table into a list of lists, where each sublist is a row
+    ListOfRows = List.Transform(Table.ToRows(SheetData), each List.Transform(_, each if _ is null then "" else Text.From(_))),
+
+    // Define the list of keywords to filter by
+    KeywordsList = {"Blistex", "No Doz", "Odor Eaters", "OdorEaters"},
+
+    // Filter the list of rows based on the presence of keywords
+    FilteredListOfRows = List.Select(ListOfRows, each let RowAsString = Text.Combine(_, " ") in List.AnyTrue(List.Transform(KeywordsList, each Text.Contains(RowAsString, _, Comparer.OrdinalIgnoreCase)))),
+
+    // Remove blank rows from each list
+    NoBlankRowsList = List.Transform(FilteredListOfRows, each List.Select(_, each Text.Trim(_) <> "")),
+
+    // Keep only the third last record from each list
+    ThirdLastRecord = List.Transform(NoBlankRowsList, each List.Range(_, List.Count(_) - 3, 1)),
+    FlattenedThirdLast = List.Combine(ThirdLastRecord),
+
+    // Keep rows containing any keyword from KeywordsList
+    RowsWithKeywords = List.Transform(NoBlankRowsList, each List.Select(_, each List.AnyTrue(List.Transform(KeywordsList, (keyword) => Text.Contains(_, keyword, Comparer.OrdinalIgnoreCase))))),
+    FlattenedKeywords = List.Combine(RowsWithKeywords),
+
+    // Custom function to check if a string is a date
+    IsDate = (text) => 
+        let 
+            parsed = try Date.FromText(text) 
+        in 
+            if parsed[HasError] then false else Type.Is(parsed[Value], type date),
+
+    // Keep rows that are in date format
+    RowsWithDates = List.Transform(NoBlankRowsList, each List.Select(_, each let result = try IsDate(_) in if result[HasError] then false else result[Value]))
+in
+    RowsWithDates
+
+
+////////////// debug function
+
+let
+    TestList = {"19.07.2023", "25.07.2023", "Blistex Lip Balm", "18.399999999999999", "Not a date"},
+    // Custom function to check if a string is a date
+    IsDate = (text) => 
+    let 
+        parsed = try Date.FromText(text),
+        reformatted = try Date.ToText(parsed[Value], "dd.MM.yyyy")
+    in 
+        not parsed[HasError] and not reformatted[HasError]
+
+
+    ,Results = List.Transform(TestList, each IsDate(_))
+in
+    Results
+
+
+    /////////
+
+let
+    Source = Excel.Workbook(File.Contents("C:\\Users\\tosborn\\OneDrive - Key Pharmaceuticals\\Desktop\\Chat GPT ADA - Woolies Data.xlsx"), null, true),
+    SheetData = Source{[Item="Data1", Kind="Sheet"]}[Data],
+
+    // Convert the table into a list of lists, where each sublist is a row
+    ListOfRows = List.Transform(Table.ToRows(SheetData), each List.Transform(_, each if _ is null then "" else Text.From(_))),
+
+    // Define the list of keywords to filter by
+    KeywordsList = {"Blistex", "No Doz", "Odor Eaters", "OdorEaters"},
+
+    // Filter the list of rows based on the presence of keywords
+    FilteredListOfRows = List.Select(ListOfRows, each let RowAsString = Text.Combine(_, " ") in List.AnyTrue(List.Transform(KeywordsList, each Text.Contains(RowAsString, _, Comparer.OrdinalIgnoreCase)))),
+
+        // Remove blank rows from each list
+    NoBlankRowsList = List.Transform(FilteredListOfRows, each List.Select(_, each Text.Trim(_) <> "")),
+    // Remove blank rows from each list
+    NoBlankRowsList1 = NoBlankRowsList{5},
+    ConvertToTable = Table.FromList(NoBlankRowsList1, Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+    // Custom function to check if a string is a date
+    IsDate = (text) => 
+        let 
+            parsed = try Date.FromText(text),
+            reformatted = try Date.ToText(parsed[Value], "dd.MM.yyyy")
+        in 
+            not parsed[HasError] and not reformatted[HasError]
+
+    // Add Column to test date function     
+    AddDateColumn = Table.AddColumn(ConvertToTable, "IsDate", each IsDate([Column1]), type logical)
+
+
+in
+    ConvertToTable
+
+
+
+
 
 
 
