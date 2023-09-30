@@ -19,4 +19,19 @@
             )
     )
 
+/////////
 
+// Change all column types to text
+    ChangeColumnTypes =
+        Table.TransformColumnTypes(
+            SheetData,
+            List.Transform(
+                Table.ColumnNames(SheetData),  
+            each {_, Text.Type}
+            )
+        ),
+
+
+
+
+//////
