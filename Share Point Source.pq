@@ -1,3 +1,53 @@
+/*
+    Connect to a file saved in sharepoint 
+    sample for Microsoft Sharepoint site file
+*/
+
+
+let
+    // Go to sharepoint site, navigate to the documents site, copy past the web URL, 
+    // delete everything after and including the "Shared%", for example, the below is from address:
+    // https://microsoftapc.sharepoint.com/teams/TimOsbornPbiFiles/Shared%20Documents/Forms/AllItems.aspx?viewid=db6b39d4%2Dd2f6%2D43f8%2Dab90%2D08d6fa4e6391
+    Source = SharePoint.Files(
+        "https://microsoftapc.sharepoint.com/teams/TimOsbornPbiFiles/", 
+        [ApiVersion = 15]
+    ), 
+
+    // Filter by the specific file name 
+    Filter = Table.SelectRows(Source, each ([Name] = "Cp2_Sales_Forecast.xlsx")), 
+
+    // Filter on the first file in the list
+    Navigation = Filter{0}[Content], 
+
+    // Access the Excel Workbook contents (import)
+    ImportExcelWorkbook = Excel.Workbook(Navigation), 
+
+    // Filter by table object only, no sheets or other objects
+    FilterRows = Table.SelectRows(ImportExcelWorkbook, each ([Kind] = "Table")), 
+
+    // Data columns only
+    RemoveOtherColumns = Table.SelectColumns(FilterRows, {"Data"}), 
+
+    // Expand Columns
+    ExpandData = Table.ExpandTableColumn(
+        RemoveOtherColumns, 
+        "Data", 
+        {"Forecast", "Sales"}, 
+        {"Forecast", "Sales"}
+    ), 
+
+    // Change types
+    ChangeTypes = Table.TransformColumnTypes(
+        ExpandData, 
+        {{"Forecast", type date}, {"Sales", type number}}
+    )
+
+in
+    // Display result
+    ChangeTypes
+
+
+
 
 /*//Connect to a file saved in sharepoint */
 
