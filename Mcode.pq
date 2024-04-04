@@ -1,127 +1,55 @@
 
-let
-    Source = Excel.Workbook(Web.Contents("https://keypharmau.sharepoint.com/sites/KeyBrandMarketing/Shared%20Documents/Finance%20Reporting/A&P%20Tracker/A&P%20Tracker%20FY24_20230727%20v3-5.xlsm"), null, true),
-    ANTIVIRAL_Sheet = Source{[Item="ANTIVIRAL",Kind="Sheet"]}[Data],
-    RemoveOtherColumns = Table.SelectColumns(ANTIVIRAL_Sheet,{"Column1", "Column2", "Column3", "Column4", "Column5", "Column6" , "Column7" }),
-    BrandNameDrillDown = RemoveOtherColumns{0}[Column2],
-    RemoveTopRows = Table.Skip(RemoveOtherColumns,2),
-    FilterOutNullAmount = Table.SelectRows(RemoveTopRows, each ([Column7] <> null)),
-    PromoteHeaders = Table.PromoteHeaders(FilterOutNullAmount, [PromoteAllScalars=true]),
-    ChangeTypes = Table.TransformColumnTypes(PromoteHeaders,{{"Account", type text}, {"Account Description", type text}, {"Project", type text}, {"Activity Description", type text}, {"Status", type text}, {"Month of Promo Activity", type text}, {"Invoice Amount#(lf)(Excl. GST)", type number}}),
-    AddBrandColumn = Table.AddColumn(
-    ChangeTypes, 
-    "Brand",
-        each
-            BrandNameDrillDown
-    , Text.Type
-),
-    RenameColumns = Table.RenameColumns(AddBrandColumn,{{"Invoice Amount#(lf)(Excl. GST)", "Amount"}}),
-    AddDateColumn = Table.AddColumn(
-    RenameColumns, 
-    "Activity Date",
-        each
-            if  [Month of Promo Activity] = "Jul"   then    #date(2023,7,1) else
-            if  [Month of Promo Activity] = "Aug"   then    #date(2023,8,1) else
-            if  [Month of Promo Activity] = "Sep"   then    #date(2023,9,1) else
-            if  [Month of Promo Activity] = "Oct"   then    #date(2023,10,1) else
-            if  [Month of Promo Activity] = "Nov"   then    #date(2023,11,1) else
-            if  [Month of Promo Activity] = "Dec"   then    #date(2023,12,1) else
-            if  [Month of Promo Activity] = "Jan"   then    #date(2024,1,1) else
-            if  [Month of Promo Activity] = "Feb"   then    #date(2024,2,1) else
-            if  [Month of Promo Activity] = "Mar"   then    #date(2024,3,1) else
-            if  [Month of Promo Activity] = "Apr"   then    #date(2024,4,1) else
-            if  [Month of Promo Activity] = "May"   then    #date(2024,5,1) else
-            if  [Month of Promo Activity] = "Jun"   then    #date(2024,6,1) else
-                #date(2030,7,1)
-    , Date.Type
-)
+
+section Section1;
+
+shared zDL_Payfile_Syd = let
+    Source = Folder.Files("\\casino.internal\\Data\\SYD\\Groups\\Scheduling\\Financial Reports\\Pay Files\\F08 & F30"),
+    #"Filtered rows" = Table.SelectRows(Source, each ([Extension] = ".csv")),
+    #"Filtered rows 1" = Table.SelectRows(#"Filtered rows", each [Date created] > #datetime(2023, 6, 30, 0, 0, 0)),
+    #"Lowercased text" = Table.TransformColumns(#"Filtered rows 1", {{"Name", each Text.Lower(_), type text}}),
+    #"Filtered rows 2" = Table.SelectRows(#"Lowercased text", each Text.Contains([Name], "sent")),
+    #"Filtered hidden files" = Table.SelectRows(#"Filtered rows 2", each [Attributes]?[Hidden]? <> true),
+    #"Invoke custom function" = Table.AddColumn(#"Filtered hidden files", "Transform file", each #"Transform file"([Content])),
+    #"Removed other columns" = Table.SelectColumns(#"Invoke custom function", {"Transform file"}),
+    #"Expanded table column" = Table.ExpandTableColumn(#"Removed other columns", "Transform file", Table.ColumnNames(#"Transform file"(#"Sample file")))
 in
-    AddDateColumn
+    #"Expanded table column";
 
-    //
-
-    (Sheet)=>
-
-    RemoveOtherColumns = Table.SelectColumns(Sheet,{"Column1", "Column2", "Column3", "Column4", "Column5", "Column6" , "Column7" }),
-    BrandNameDrillDown = RemoveOtherColumns{0}[Column2],
-    RemoveTopRows = Table.Skip(RemoveOtherColumns,2),
-    FilterOutNullAmount = Table.SelectRows(RemoveTopRows, each ([Column7] <> null)),
-    PromoteHeaders = Table.PromoteHeaders(FilterOutNullAmount, [PromoteAllScalars=true]),
-    ChangeTypes = Table.TransformColumnTypes(PromoteHeaders,{{"Account", type text}, {"Account Description", type text}, {"Project", type text}, {"Activity Description", type text}, {"Status", type text}, {"Month of Promo Activity", type text}, {"Invoice Amount#(lf)(Excl. GST)", type number}}),
-    AddBrandColumn = Table.AddColumn(
-        ChangeTypes, 
-        "Brand",
-            each
-                BrandNameDrillDown
-        , Text.Type
-    ),
-    RenameColumns = Table.RenameColumns(AddBrandColumn,{{"Invoice Amount#(lf)(Excl. GST)", "Amount"}}),
-    AddDateColumn = Table.AddColumn(
-    RenameColumns, 
-    "Activity Date",
-        each
-            if  [Month of Promo Activity] = "Jul"   then    #date(2023,7,1) else
-            if  [Month of Promo Activity] = "Aug"   then    #date(2023,8,1) else
-            if  [Month of Promo Activity] = "Sep"   then    #date(2023,9,1) else
-            if  [Month of Promo Activity] = "Oct"   then    #date(2023,10,1) else
-            if  [Month of Promo Activity] = "Nov"   then    #date(2023,11,1) else
-            if  [Month of Promo Activity] = "Dec"   then    #date(2023,12,1) else
-            if  [Month of Promo Activity] = "Jan"   then    #date(2024,1,1) else
-            if  [Month of Promo Activity] = "Feb"   then    #date(2024,2,1) else
-            if  [Month of Promo Activity] = "Mar"   then    #date(2024,3,1) else
-            if  [Month of Promo Activity] = "Apr"   then    #date(2024,4,1) else
-            if  [Month of Promo Activity] = "May"   then    #date(2024,5,1) else
-            if  [Month of Promo Activity] = "Jun"   then    #date(2024,6,1) else
-                #date(2030,7,1)
-    , Date.Type
-)
+shared #"Sample file" = let
+    Source = Folder.Files("\\casino.internal\\Data\\SYD\\Groups\\Scheduling\\Financial Reports\\Pay Files\\F08 & F30"),
+    #"Filtered rows" = Table.SelectRows(Source, each [Extension] = ".csv"),
+    #"Filtered rows 1" = Table.SelectRows(#"Filtered rows", each [Date created] > #datetime(2023, 6, 30, 0, 0, 0)),
+    #"Lowercased text" = Table.TransformColumns(#"Filtered rows 1", {{"Name", each Text.Lower(_), type text}}),
+    #"Filtered rows 2" = Table.SelectRows(#"Lowercased text", each Text.Contains([Name], "sent")),
+    #"Filtered hidden files" = Table.SelectRows(#"Filtered rows 2", each [Attributes]?[Hidden]? <> true),
+    Navigation = #"Filtered hidden files"{0}[Content]
 in
-    AddDateColumn
+    Navigation;
 
-///
-
-let
-    Source = Odbc.Query("dsn=_Data_01_MSSQL", "/* Range of accounts query for marketing accruals actuals transaction level  */#(lf)#(lf)#(tab)SELECT #(tab)#(lf)#(tab)#(tab)LEFT(gltrxhst_sql.mn_no,5) #(tab)#(tab)AS 'GL'#(lf)#(tab)#(tab), LEFT(gltrxhst_sql.sb_no,2) #(tab)AS 'CC'#(lf)#(tab)#(tab), SYACTFIL_SQL.acct_desc#(tab)#(tab)AS 'GL Description'#(lf)#(tab)#(tab), gltrxhst_sql.trx_dt#(tab)#(tab)#(tab)AS 'Date'#(lf)#(tab)#(tab), gltrxhst_sql.trx_amt#(tab)#(tab)#(tab)AS 'Amount'#(lf)#(tab)#(tab), gltrxhst_sql.reference#(tab)#(tab)AS 'Reference'#(lf)#(tab)#(tab), gltrxhst_sql.trx_src#(tab)#(tab)#(tab)AS 'Source'#(lf)#(tab)FROM#(lf)#(tab) #(tab)DATA_001.dbo.gltrxhst_sql gltrxhst_sql#(lf)#(tab)#(tab), DATA_001.dbo.SYACTFIL_SQL SYACTFIL_SQL#(lf)#(tab)WHERE #(tab)#(lf)#(tab)#(tab)(#(lf)#(tab)#(tab)#(tab)(#(lf)#(tab)#(tab)#(tab)#(tab)#(tab)LEFT(gltrxhst_sql.mn_no,5) >= 45611#(tab)#(tab)#(lf)#(tab)#(tab)#(tab)#(tab)AND#(tab)LEFT(gltrxhst_sql.mn_no,5) <= 90138#(lf)#(tab)#(tab)#(tab))#(tab)AND #(lf)#(tab)#(tab)#(tab)(#(lf)#(tab)#(tab)#(tab)#(tab)#(tab)LEFT(gltrxhst_sql.sb_no,2) = 18#(lf)#(tab)#(tab)#(tab))#(tab)AND#(lf)#(tab)#(tab)#(tab)(#(lf)#(tab)#(tab)#(tab)#(tab)#(tab)gltrxhst_sql.trx_dt>= 20230701 #(tab)#(tab)#(lf)#(tab)#(tab)#(tab)#(tab)AND#(tab)(SYACTFIL_SQL.mn_no=gltrxhst_sql.mn_no) #(lf)#(tab)#(tab)#(tab)#(tab)AND (SYACTFIL_SQL.sb_no=gltrxhst_sql.sb_no)#(lf)#(tab)#(tab)#(tab))#(lf)#(tab)#(tab))"),
-    DateType1 = Table.TransformColumnTypes(Source,{{"Date", type text}}),
-    DateType2 = Table.TransformColumnTypes(DateType1,{{"Date", type date}}),
-    MergeQueries = Table.NestedJoin(DateType2, {"GL", "CC"}, #"GL Groups P&L Summary", {"GL", "CC"}, "LedgerList", JoinKind.Inner),
-    ExpandCategoryBrand = Table.ExpandTableColumn(MergeQueries, "LedgerList", {"Category", "Brand"}, {"Category", "Brand"})
+shared Parameter = let
+    Parameter = #"Sample file" meta [IsParameterQuery = true, IsParameterQueryRequired = true, Type = type binary, BinaryIdentifier = #"Sample file"]
 in
-    ExpandCategoryBrand
+    Parameter;
 
-///
-
-let
-    Source = "",
-    DateMonth = Date.Month(LastActDate),
-    PeriodText = 
-    
-        if
-            // if month is >= 7 & <=9
-            DateMonth  > 6
-        then
-            // take away 6 and add a 0 (from period 1 to 6)
-            "0" & Number.ToText(DateMonth - 6 )
-        else 
-            if
-
-                DateMonth < 4 
-            then
-                "0" & Number.ToText(DateMonth + 6 )
-            else 
-                Number.ToText(DateMonth + 6) ,
-    FYear = Date.Year(LastActDate),
-    FYearText = 
-
-        if
-            DateMonth > 6 
-        then
-            Number.ToText(FYear + 1 )
-        else
-            Number.ToText(FYear ),
-
-    FYearPeriod = FYearText & PeriodText
-
+shared #"Transform Sample file" = let
+    Source = Csv.Document(Parameter, [Delimiter = ",", Columns = 19, QuoteStyle = QuoteStyle.None]),
+    #"Promoted headers" = Table.PromoteHeaders(Source, [PromoteAllScalars = true])
 in
-    FYearPeriod
+    #"Promoted headers";
+
+// function
+[FunctionQueryBinding = "{\"exemplarFormulaName\":\"Transform Sample file\"}"]
+
+shared #"Transform file" = let
+    #"Transform file" = (Parameter as binary) => let
+        Source = Csv.Document(Parameter, [Delimiter = ",", Columns = 19, QuoteStyle = QuoteStyle.None]),
+        #"Promoted headers" = Table.PromoteHeaders(Source, [PromoteAllScalars = true])
+    in
+        #"Promoted headers"
+in
+    #"Transform file";
+
+
+
+
 
