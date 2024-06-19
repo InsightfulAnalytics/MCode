@@ -1,55 +1,105 @@
 
 
-section Section1;
+//GetStorageContainerContent
 
-shared zDL_Payfile_Syd = let
-    Source = Folder.Files("\\casino.internal\\Data\\SYD\\Groups\\Scheduling\\Financial Reports\\Pay Files\\F08 & F30"),
-    #"Filtered rows" = Table.SelectRows(Source, each ([Extension] = ".csv")),
-    #"Filtered rows 1" = Table.SelectRows(#"Filtered rows", each [Date created] > #datetime(2023, 6, 30, 0, 0, 0)),
-    #"Lowercased text" = Table.TransformColumns(#"Filtered rows 1", {{"Name", each Text.Lower(_), type text}}),
-    #"Filtered rows 2" = Table.SelectRows(#"Lowercased text", each Text.Contains([Name], "sent")),
-    #"Filtered hidden files" = Table.SelectRows(#"Filtered rows 2", each [Attributes]?[Hidden]? <> true),
-    #"Invoke custom function" = Table.AddColumn(#"Filtered hidden files", "Transform file", each #"Transform file"([Content])),
-    #"Removed other columns" = Table.SelectColumns(#"Invoke custom function", {"Transform file"}),
-    #"Expanded table column" = Table.ExpandTableColumn(#"Removed other columns", "Transform file", Table.ColumnNames(#"Transform file"(#"Sample file")))
-in
-    #"Expanded table column";
-
-shared #"Sample file" = let
-    Source = Folder.Files("\\casino.internal\\Data\\SYD\\Groups\\Scheduling\\Financial Reports\\Pay Files\\F08 & F30"),
-    #"Filtered rows" = Table.SelectRows(Source, each [Extension] = ".csv"),
-    #"Filtered rows 1" = Table.SelectRows(#"Filtered rows", each [Date created] > #datetime(2023, 6, 30, 0, 0, 0)),
-    #"Lowercased text" = Table.TransformColumns(#"Filtered rows 1", {{"Name", each Text.Lower(_), type text}}),
-    #"Filtered rows 2" = Table.SelectRows(#"Lowercased text", each Text.Contains([Name], "sent")),
-    #"Filtered hidden files" = Table.SelectRows(#"Filtered rows 2", each [Attributes]?[Hidden]? <> true),
-    Navigation = #"Filtered hidden files"{0}[Content]
-in
-    Navigation;
-
-shared Parameter = let
-    Parameter = #"Sample file" meta [IsParameterQuery = true, IsParameterQueryRequired = true, Type = type binary, BinaryIdentifier = #"Sample file"]
-in
-    Parameter;
-
-shared #"Transform Sample file" = let
-    Source = Csv.Document(Parameter, [Delimiter = ",", Columns = 19, QuoteStyle = QuoteStyle.None]),
-    #"Promoted headers" = Table.PromoteHeaders(Source, [PromoteAllScalars = true])
-in
-    #"Promoted headers";
-
-// function
-[FunctionQueryBinding = "{\"exemplarFormulaName\":\"Transform Sample file\"}"]
-
-shared #"Transform file" = let
-    #"Transform file" = (Parameter as binary) => let
-        Source = Csv.Document(Parameter, [Delimiter = ",", Columns = 19, QuoteStyle = QuoteStyle.None]),
-        #"Promoted headers" = Table.PromoteHeaders(Source, [PromoteAllScalars = true])
+    ()=>
+    let
+        Source = #"#StorageContainers",
+        #"ContainerContent" = Source{[Name=#"@AzureStorageBlobContainerName"]}[Data],
+        #"Removed Other Columns" = Table.SelectColumns(ContainerContent,{"Content", "Name", "Date modified", "Attributes"}),
+        #"Filtered Rows" = Table.SelectRows(#"Removed Other Columns", each [Name] <> "model.json"),
+        #"Sorted Rows" = Table.Sort(#"Filtered Rows",{{"Date modified", Order.Descending}}),
+        #"Expanded Attributes" = Table.ExpandRecordColumn(#"Sorted Rows", "Attributes", {"Size"}, {"Size"}),
+        #"File Name column" = Table.DuplicateColumn(#"Expanded Attributes", "Name", "File Name"),
+        #"Remove csv" = Table.ReplaceValue(#"File Name column","csv/","",Replacer.ReplaceText,{"File Name"}),
+        #"Split Column by Delimiter" = Table.SplitColumn(#"Remove csv", "File Name", Splitter.SplitTextByEachDelimiter({"/"}, QuoteStyle.Csv, true), {"Interaction Name", "File Name"}),
+        #"Transform" = Table.TransformColumnTypes(#"Split Column by Delimiter",{{"Interaction Name", type text}, {"File Name", type text}, {"Size", Int64.Type}}),    
+        #"Add Datestamp" = Table.DuplicateColumn(#"Transform", "Date modified", "Datestamp"),
+        #"DateStampFormat" = Table.TransformColumnTypes(#"Add Datestamp",{{"Datestamp", type date}}),
+        TodayFunction = DateTime.FixedLocalNow,    
+        #"Add Today" = Table.AddColumn(#"DateStampFormat", "Today", each TodayFunction()),
+        #"Changed TodayType" = Table.TransformColumnTypes(#"Add Today",{{"Today", type date}}),
+        #"Add DaysFromToday" = Table.AddColumn(#"Changed TodayType", "DaysFromToday", each [Datestamp]-[Today]),
+        #"Changed DaysFromToday" = Table.TransformColumnTypes(#"Add DaysFromToday",{{"DaysFromToday", Int64.Type}}),
+        Result = Table.RemoveColumns(#"Changed DaysFromToday", "Today")
     in
-        #"Promoted headers"
+        Result
+
+//#StorageContainerContent
+
+    //loaded, doesn't lead to anywhere
+
+
+//FilteredStorageContainerContent
+
+
+let
+    Source = FilterStorageContainerContent(null),
+    #"Remove Columns" = Table.RemoveColumns(Source,{"Name", "Date modified"}),
+    #"Merged Queries" = Table.NestedJoin(#"Remove Columns",{"Interaction Name"},#"!LoadedInteractions",{"Interaction Name"},"!LoadedInteractions",JoinKind.Inner),
+    #"Removed Columns" = Table.RemoveColumns(#"Merged Queries",{"!LoadedInteractions"}),
+    Result = Table.Buffer(#"Removed Columns")
 in
-    #"Transform file";
+    Result
 
 
 
 
+//#FilterStorageContainerContent
+
+(#"Interaction Name") =>
+let
+    Source = GetStorageContainerContent(),
+    #"FilteredByInteraction" = if (#"Interaction Name" is null) then Source 
+    else
+    Table.SelectRows(#"Source", each [Interaction Name] = #"Interaction Name"),
+    // Filter by the number of daysback
+    Result = if (not (#"@LoadInteractionsForNumberOfDaysBack" is null))
+      then Table.SelectRows(
+        #"FilteredByInteraction", 
+            each [DaysFromToday] < -1 and [DaysFromToday] >= -45 // adjust days from & to here
+        )
+      else #"FilteredByInteraction"
+in
+    Result
+
+
+
+//ParseInteractionFileContent
+
+    //importing csv
+
+
+
+//GetinteractionTabledata
+
+(#"Interaction Name" as text) =>
+       let
+           //Source = FilterStorageContainerContent(#"Interaction Name"),
+           Source = #"#FilteredStorageContainerContent",
+           #"FilteredByInteraction" = Table.SelectRows(#"Source", each [Interaction Name] = #"Interaction Name"),
+           #"AddFileContents" = Table.AddColumn(#"FilteredByInteraction", "FileContent", each ParseInteractionFileContent([Content])),
+           #"ContentTable" = Table.SelectColumns(AddFileContents,{"FileContent"}),
+           #"NoDataFiles" = Table.IsEmpty(#"ContentTable"),
+           InteractionTable = if (#"NoDataFiles") then 
+             GetDefaultInteractionTable(#"Interaction Name")
+           else
+             Table.ExpandTableColumn(#"ContentTable", "FileContent", Table.ColumnNames(ContentTable{0}[FileContent])),
+           // Interction timestamp is stored in US datetimezone format in interaction store - this should be fixed going forward
+           #"Transformed" = Table.TransformColumnTypes(InteractionTable,{{"Timestamp", type datetimezone}}, "en-US"),
+           #"Duplicated Column" = Table.DuplicateColumn(#"Transformed", "Timestamp", "Datestamp"),
+           #"Datestamp" = Table.TransformColumns(#"Duplicated Column",{{"Datestamp", DateTime.Date, type date}}),
+           #"RenameId" = Table.RenameColumns(#"Datestamp",{{"InternalMarketingInteractionId", "Id"}})          
+       in
+           #"RenameId"
+
+
+
+
+//Email Clicked
+
+let
+    Source = GetInteractionTableData("EmailClicked")
+in
+    Source
 

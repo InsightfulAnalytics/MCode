@@ -44,3 +44,25 @@ Text.Remove(
 = Source{[#"Folder Path"="M:\Finance\Reporting\Power BI\Parcel Buys\Data Files\Sigma\",Name="0061000240.KEY PHARMACEUTICALS PTY LTD.Vendor Claims.July2022.xlsx"]}[Content]
 
 = Source{[#"Folder Path"="M:\Finance\Reporting\Power BI\Parcel Buys\Data Files\Sigma\",Name="61000240.KEY PHARMACEUTICALS PTY LTD.Vendor Claims.April 2023.xlsx"]}[Content]
+
+
+/////////
+
+
+= Table.TransformColumns(
+    ChangeDaysFromToday,
+    {
+        {
+            "DaysFromToday", 
+            each 
+                Number.RoundDown( _, 1),
+                type number
+                
+        }
+    }
+)
+
+
+
+
+
