@@ -1,6 +1,46 @@
 
 /*//Connect to a file saved in sharepoint */
 
+    // Acurio budget file,  sharepoint file, nested table transformations and function
+
+    let
+        Source = SharePoint.Files("https://acurioservices.sharepoint.com/sites/ITS", [ApiVersion = 15]),
+        BudgetFile = Table.SelectRows(Source, each ([Name] = BudgetFileName )),
+        DrillDown = BudgetFile{0}[Content],
+        ImportExcelWorkbook = Excel.Workbook(DrillDown, null, true),
+        KeepOnlyDataColumn = Table.SelectColumns(ImportExcelWorkbook, {"Data", "Item"}),
+        NestedTablePromoteHeaders = Table.AddColumn(
+            KeepOnlyDataColumn,
+            "PromoteHeaders",
+            each Table.PromoteHeaders([Data], [PromoteAllScalars = true])
+        ),
+        NestedTableAddItemColumn = Table.AddColumn(
+            NestedTablePromoteHeaders,
+            "TablesWithItem",
+            (currentRow) =>
+            let
+                item = currentRow[Item],
+                promotedTable = currentRow[PromoteHeaders],
+                newTable = Table.AddColumn(promotedTable, "Item", (_) => item)
+            in
+                newTable
+        ),
+        ExpandTables = Table.Combine(NestedTableAddItemColumn[TablesWithItem]),
+        UnpivotDatesValues = Table.UnpivotOtherColumns(ExpandTables, {"CostCentre", "Type", "Specialization", "Custom"}, "Attribute", "Value"),
+        ChangeColumnTypes = Table.TransformColumnTypes(
+            UnpivotDatesValues,
+            {
+            {"CostCentre", type text},
+            {"Type", type text},
+            {"Specialization", type text},
+            {"Attribute", type date},
+            {"Value", type number},
+            {"Item", type text}
+            }
+        )
+    in
+        ChangeColumnTypes
+
     //order type codes
 
     let

@@ -62,10 +62,52 @@
 
 /////
 
+= Table.AddColumn(
+    KeepOnlyDataColumn, 
+    "RenameColumn",
+        each
+            Table.PromoteHeaders( [Data], [PromoteAllScalars = true])
+)
+
+/////
+
+= Table.AddColumn(
+    NestedTablePromoteHeaders, 
+    "RenameColumn",
+        each
+            Table.AddColumn([Data], "Custom", each [Item])
+)
 
 
+Table.AddColumn(NestedTablePromoteHeaders, "Custom", each [Item])
 
 
+//////////
 
+
+let
+  Source = SharePoint.Files("https://acurioservices.sharepoint.com/sites/ITS", [ApiVersion = 15]),
+  BudgetFile = Table.SelectRows(Source, each ([Name] = BudgetFileName )),
+  DrillDown = BudgetFile{0}[Content],
+  ImportExcelWorkbook = Excel.Workbook(DrillDown, null, true),
+  KeepOnlyDataColumn = Table.SelectColumns(ImportExcelWorkbook, {"Data", "Item" }),
+  NestedTablePromoteHeaders =  Table.AddColumn(
+    KeepOnlyDataColumn, 
+    "PromoteHeaders",
+        each
+            Table.PromoteHeaders( [Data], [PromoteAllScalars = true])
+),
+  NestedTableAddItemColumn =  Table.AddColumn(
+    NestedTablePromoteHeaders, 
+    "RenameColumn",
+        each
+            Table.AddColumn([Data], "Custom", each [Item])
+)
+,
+  ExpandTables = Table.Combine(NestedTableAddItemColumn[PromoteHeaders]),
+  UnpivotDatesValues = Table.UnpivotOtherColumns(ExpandTables, {"CostCentre", "Type", "Specialization"}, "Attribute", "Value"),
+  ChangeColumnTypes = Table.TransformColumnTypes(UnpivotDatesValues, {{"CostCentre", type text}, {"Type", type text}, {"Specialization", type text}, {"Attribute", type date}, {"Value", type number}})
+in
+  ChangeColumnTypes
 
 

@@ -2008,4 +2008,29 @@ in
 
 
 
+/////////////////////
+
+= Table.AddColumn(
+    ChangeType, 
+    "Date",
+        each
+            #date([Year] , Date.FromText([Attribute] , [Format="MMM"] ) , 1 )
+)
+
+////////////////
+
+
+= Table.AddColumn(
+    ChangeType, 
+    "Date",
+        each
+            #date(
+                [Year],
+                Date.Month(
+                    Date.FromText([Attribute] , [Format="MMM"] )
+                ),
+                1
+            ),
+            Date.Type
+)
 
