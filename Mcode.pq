@@ -1,127 +1,105 @@
 
-let
-    Source = Excel.Workbook(Web.Contents("https://keypharmau.sharepoint.com/sites/KeyBrandMarketing/Shared%20Documents/Finance%20Reporting/A&P%20Tracker/A&P%20Tracker%20FY24_20230727%20v3-5.xlsm"), null, true),
-    ANTIVIRAL_Sheet = Source{[Item="ANTIVIRAL",Kind="Sheet"]}[Data],
-    RemoveOtherColumns = Table.SelectColumns(ANTIVIRAL_Sheet,{"Column1", "Column2", "Column3", "Column4", "Column5", "Column6" , "Column7" }),
-    BrandNameDrillDown = RemoveOtherColumns{0}[Column2],
-    RemoveTopRows = Table.Skip(RemoveOtherColumns,2),
-    FilterOutNullAmount = Table.SelectRows(RemoveTopRows, each ([Column7] <> null)),
-    PromoteHeaders = Table.PromoteHeaders(FilterOutNullAmount, [PromoteAllScalars=true]),
-    ChangeTypes = Table.TransformColumnTypes(PromoteHeaders,{{"Account", type text}, {"Account Description", type text}, {"Project", type text}, {"Activity Description", type text}, {"Status", type text}, {"Month of Promo Activity", type text}, {"Invoice Amount#(lf)(Excl. GST)", type number}}),
-    AddBrandColumn = Table.AddColumn(
-    ChangeTypes, 
-    "Brand",
-        each
-            BrandNameDrillDown
-    , Text.Type
-),
-    RenameColumns = Table.RenameColumns(AddBrandColumn,{{"Invoice Amount#(lf)(Excl. GST)", "Amount"}}),
-    AddDateColumn = Table.AddColumn(
-    RenameColumns, 
-    "Activity Date",
-        each
-            if  [Month of Promo Activity] = "Jul"   then    #date(2023,7,1) else
-            if  [Month of Promo Activity] = "Aug"   then    #date(2023,8,1) else
-            if  [Month of Promo Activity] = "Sep"   then    #date(2023,9,1) else
-            if  [Month of Promo Activity] = "Oct"   then    #date(2023,10,1) else
-            if  [Month of Promo Activity] = "Nov"   then    #date(2023,11,1) else
-            if  [Month of Promo Activity] = "Dec"   then    #date(2023,12,1) else
-            if  [Month of Promo Activity] = "Jan"   then    #date(2024,1,1) else
-            if  [Month of Promo Activity] = "Feb"   then    #date(2024,2,1) else
-            if  [Month of Promo Activity] = "Mar"   then    #date(2024,3,1) else
-            if  [Month of Promo Activity] = "Apr"   then    #date(2024,4,1) else
-            if  [Month of Promo Activity] = "May"   then    #date(2024,5,1) else
-            if  [Month of Promo Activity] = "Jun"   then    #date(2024,6,1) else
-                #date(2030,7,1)
-    , Date.Type
-)
-in
-    AddDateColumn
 
-    //
+//GetStorageContainerContent
 
-    (Sheet)=>
+    ()=>
+    let
+        Source = #"#StorageContainers",
+        #"ContainerContent" = Source{[Name=#"@AzureStorageBlobContainerName"]}[Data],
+        #"Removed Other Columns" = Table.SelectColumns(ContainerContent,{"Content", "Name", "Date modified", "Attributes"}),
+        #"Filtered Rows" = Table.SelectRows(#"Removed Other Columns", each [Name] <> "model.json"),
+        #"Sorted Rows" = Table.Sort(#"Filtered Rows",{{"Date modified", Order.Descending}}),
+        #"Expanded Attributes" = Table.ExpandRecordColumn(#"Sorted Rows", "Attributes", {"Size"}, {"Size"}),
+        #"File Name column" = Table.DuplicateColumn(#"Expanded Attributes", "Name", "File Name"),
+        #"Remove csv" = Table.ReplaceValue(#"File Name column","csv/","",Replacer.ReplaceText,{"File Name"}),
+        #"Split Column by Delimiter" = Table.SplitColumn(#"Remove csv", "File Name", Splitter.SplitTextByEachDelimiter({"/"}, QuoteStyle.Csv, true), {"Interaction Name", "File Name"}),
+        #"Transform" = Table.TransformColumnTypes(#"Split Column by Delimiter",{{"Interaction Name", type text}, {"File Name", type text}, {"Size", Int64.Type}}),    
+        #"Add Datestamp" = Table.DuplicateColumn(#"Transform", "Date modified", "Datestamp"),
+        #"DateStampFormat" = Table.TransformColumnTypes(#"Add Datestamp",{{"Datestamp", type date}}),
+        TodayFunction = DateTime.FixedLocalNow,    
+        #"Add Today" = Table.AddColumn(#"DateStampFormat", "Today", each TodayFunction()),
+        #"Changed TodayType" = Table.TransformColumnTypes(#"Add Today",{{"Today", type date}}),
+        #"Add DaysFromToday" = Table.AddColumn(#"Changed TodayType", "DaysFromToday", each [Datestamp]-[Today]),
+        #"Changed DaysFromToday" = Table.TransformColumnTypes(#"Add DaysFromToday",{{"DaysFromToday", Int64.Type}}),
+        Result = Table.RemoveColumns(#"Changed DaysFromToday", "Today")
+    in
+        Result
 
-    RemoveOtherColumns = Table.SelectColumns(Sheet,{"Column1", "Column2", "Column3", "Column4", "Column5", "Column6" , "Column7" }),
-    BrandNameDrillDown = RemoveOtherColumns{0}[Column2],
-    RemoveTopRows = Table.Skip(RemoveOtherColumns,2),
-    FilterOutNullAmount = Table.SelectRows(RemoveTopRows, each ([Column7] <> null)),
-    PromoteHeaders = Table.PromoteHeaders(FilterOutNullAmount, [PromoteAllScalars=true]),
-    ChangeTypes = Table.TransformColumnTypes(PromoteHeaders,{{"Account", type text}, {"Account Description", type text}, {"Project", type text}, {"Activity Description", type text}, {"Status", type text}, {"Month of Promo Activity", type text}, {"Invoice Amount#(lf)(Excl. GST)", type number}}),
-    AddBrandColumn = Table.AddColumn(
-        ChangeTypes, 
-        "Brand",
-            each
-                BrandNameDrillDown
-        , Text.Type
-    ),
-    RenameColumns = Table.RenameColumns(AddBrandColumn,{{"Invoice Amount#(lf)(Excl. GST)", "Amount"}}),
-    AddDateColumn = Table.AddColumn(
-    RenameColumns, 
-    "Activity Date",
-        each
-            if  [Month of Promo Activity] = "Jul"   then    #date(2023,7,1) else
-            if  [Month of Promo Activity] = "Aug"   then    #date(2023,8,1) else
-            if  [Month of Promo Activity] = "Sep"   then    #date(2023,9,1) else
-            if  [Month of Promo Activity] = "Oct"   then    #date(2023,10,1) else
-            if  [Month of Promo Activity] = "Nov"   then    #date(2023,11,1) else
-            if  [Month of Promo Activity] = "Dec"   then    #date(2023,12,1) else
-            if  [Month of Promo Activity] = "Jan"   then    #date(2024,1,1) else
-            if  [Month of Promo Activity] = "Feb"   then    #date(2024,2,1) else
-            if  [Month of Promo Activity] = "Mar"   then    #date(2024,3,1) else
-            if  [Month of Promo Activity] = "Apr"   then    #date(2024,4,1) else
-            if  [Month of Promo Activity] = "May"   then    #date(2024,5,1) else
-            if  [Month of Promo Activity] = "Jun"   then    #date(2024,6,1) else
-                #date(2030,7,1)
-    , Date.Type
-)
-in
-    AddDateColumn
+//#StorageContainerContent
 
-///
+    //loaded, doesn't lead to anywhere
+
+
+//FilteredStorageContainerContent
+
 
 let
-    Source = Odbc.Query("dsn=_Data_01_MSSQL", "/* Range of accounts query for marketing accruals actuals transaction level  */#(lf)#(lf)#(tab)SELECT #(tab)#(lf)#(tab)#(tab)LEFT(gltrxhst_sql.mn_no,5) #(tab)#(tab)AS 'GL'#(lf)#(tab)#(tab), LEFT(gltrxhst_sql.sb_no,2) #(tab)AS 'CC'#(lf)#(tab)#(tab), SYACTFIL_SQL.acct_desc#(tab)#(tab)AS 'GL Description'#(lf)#(tab)#(tab), gltrxhst_sql.trx_dt#(tab)#(tab)#(tab)AS 'Date'#(lf)#(tab)#(tab), gltrxhst_sql.trx_amt#(tab)#(tab)#(tab)AS 'Amount'#(lf)#(tab)#(tab), gltrxhst_sql.reference#(tab)#(tab)AS 'Reference'#(lf)#(tab)#(tab), gltrxhst_sql.trx_src#(tab)#(tab)#(tab)AS 'Source'#(lf)#(tab)FROM#(lf)#(tab) #(tab)DATA_001.dbo.gltrxhst_sql gltrxhst_sql#(lf)#(tab)#(tab), DATA_001.dbo.SYACTFIL_SQL SYACTFIL_SQL#(lf)#(tab)WHERE #(tab)#(lf)#(tab)#(tab)(#(lf)#(tab)#(tab)#(tab)(#(lf)#(tab)#(tab)#(tab)#(tab)#(tab)LEFT(gltrxhst_sql.mn_no,5) >= 45611#(tab)#(tab)#(lf)#(tab)#(tab)#(tab)#(tab)AND#(tab)LEFT(gltrxhst_sql.mn_no,5) <= 90138#(lf)#(tab)#(tab)#(tab))#(tab)AND #(lf)#(tab)#(tab)#(tab)(#(lf)#(tab)#(tab)#(tab)#(tab)#(tab)LEFT(gltrxhst_sql.sb_no,2) = 18#(lf)#(tab)#(tab)#(tab))#(tab)AND#(lf)#(tab)#(tab)#(tab)(#(lf)#(tab)#(tab)#(tab)#(tab)#(tab)gltrxhst_sql.trx_dt>= 20230701 #(tab)#(tab)#(lf)#(tab)#(tab)#(tab)#(tab)AND#(tab)(SYACTFIL_SQL.mn_no=gltrxhst_sql.mn_no) #(lf)#(tab)#(tab)#(tab)#(tab)AND (SYACTFIL_SQL.sb_no=gltrxhst_sql.sb_no)#(lf)#(tab)#(tab)#(tab))#(lf)#(tab)#(tab))"),
-    DateType1 = Table.TransformColumnTypes(Source,{{"Date", type text}}),
-    DateType2 = Table.TransformColumnTypes(DateType1,{{"Date", type date}}),
-    MergeQueries = Table.NestedJoin(DateType2, {"GL", "CC"}, #"GL Groups P&L Summary", {"GL", "CC"}, "LedgerList", JoinKind.Inner),
-    ExpandCategoryBrand = Table.ExpandTableColumn(MergeQueries, "LedgerList", {"Category", "Brand"}, {"Category", "Brand"})
+    Source = FilterStorageContainerContent(null),
+    #"Remove Columns" = Table.RemoveColumns(Source,{"Name", "Date modified"}),
+    #"Merged Queries" = Table.NestedJoin(#"Remove Columns",{"Interaction Name"},#"!LoadedInteractions",{"Interaction Name"},"!LoadedInteractions",JoinKind.Inner),
+    #"Removed Columns" = Table.RemoveColumns(#"Merged Queries",{"!LoadedInteractions"}),
+    Result = Table.Buffer(#"Removed Columns")
 in
-    ExpandCategoryBrand
+    Result
 
-///
+
+
+
+//#FilterStorageContainerContent
+
+(#"Interaction Name") =>
+let
+    Source = GetStorageContainerContent(),
+    #"FilteredByInteraction" = if (#"Interaction Name" is null) then Source 
+    else
+    Table.SelectRows(#"Source", each [Interaction Name] = #"Interaction Name"),
+    // Filter by the number of daysback
+    Result = if (not (#"@LoadInteractionsForNumberOfDaysBack" is null))
+      then Table.SelectRows(
+        #"FilteredByInteraction", 
+            each [DaysFromToday] < -1 and [DaysFromToday] >= -45 // adjust days from & to here
+        )
+      else #"FilteredByInteraction"
+in
+    Result
+
+
+
+//ParseInteractionFileContent
+
+    //importing csv
+
+
+
+//GetinteractionTabledata
+
+(#"Interaction Name" as text) =>
+       let
+           //Source = FilterStorageContainerContent(#"Interaction Name"),
+           Source = #"#FilteredStorageContainerContent",
+           #"FilteredByInteraction" = Table.SelectRows(#"Source", each [Interaction Name] = #"Interaction Name"),
+           #"AddFileContents" = Table.AddColumn(#"FilteredByInteraction", "FileContent", each ParseInteractionFileContent([Content])),
+           #"ContentTable" = Table.SelectColumns(AddFileContents,{"FileContent"}),
+           #"NoDataFiles" = Table.IsEmpty(#"ContentTable"),
+           InteractionTable = if (#"NoDataFiles") then 
+             GetDefaultInteractionTable(#"Interaction Name")
+           else
+             Table.ExpandTableColumn(#"ContentTable", "FileContent", Table.ColumnNames(ContentTable{0}[FileContent])),
+           // Interction timestamp is stored in US datetimezone format in interaction store - this should be fixed going forward
+           #"Transformed" = Table.TransformColumnTypes(InteractionTable,{{"Timestamp", type datetimezone}}, "en-US"),
+           #"Duplicated Column" = Table.DuplicateColumn(#"Transformed", "Timestamp", "Datestamp"),
+           #"Datestamp" = Table.TransformColumns(#"Duplicated Column",{{"Datestamp", DateTime.Date, type date}}),
+           #"RenameId" = Table.RenameColumns(#"Datestamp",{{"InternalMarketingInteractionId", "Id"}})          
+       in
+           #"RenameId"
+
+
+
+
+//Email Clicked
 
 let
-    Source = "",
-    DateMonth = Date.Month(LastActDate),
-    PeriodText = 
-    
-        if
-            // if month is >= 7 & <=9
-            DateMonth  > 6
-        then
-            // take away 6 and add a 0 (from period 1 to 6)
-            "0" & Number.ToText(DateMonth - 6 )
-        else 
-            if
-
-                DateMonth < 4 
-            then
-                "0" & Number.ToText(DateMonth + 6 )
-            else 
-                Number.ToText(DateMonth + 6) ,
-    FYear = Date.Year(LastActDate),
-    FYearText = 
-
-        if
-            DateMonth > 6 
-        then
-            Number.ToText(FYear + 1 )
-        else
-            Number.ToText(FYear ),
-
-    FYearPeriod = FYearText & PeriodText
-
+    Source = GetInteractionTableData("EmailClicked")
 in
-    FYearPeriod
+    Source
 

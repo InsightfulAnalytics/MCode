@@ -2006,6 +2006,642 @@ in
     , Number.Type
 )
 
+/////////////////////
+
+= Table.AddColumn(
+    RemoveCostColumns, 
+    "Adjusted ASP",
+        each
+            if
+                [Price List.ASP] = null and [Macola.ASP] = null
+            then
+                [FAB.ASP]
+            else
+                if
+                    [Price List.ASP] = null
+                then
+                    [Macola.ASP]
+                else
+                    [FAB.ASP]
+    , Number.Type
+)
+
+///////
+
+= Table.AddColumn(
+    AspVariance, 
+    "Sales Impact",
+        each
+
+            if
+                [ASP Variance] = null
+            then
+                null
+            else
+                [Qty] * [ASP Variance]
+
+    , Number.Type
+)
+
+///
+
+= Table.AddColumn(
+    AdjustedAsp, 
+    "ASP Variance",
+        each
+
+            [FAB.ASP] - [Adjusted ASP]  
+
+    , Number.Type
+)
+
+
+/////
+
+let
+  // Perform a left outer join between "Current FAB" and "Recent Sale - SKU FAB Channel" tables on "SKU" and "Channel" columns
+  Source = Table.NestedJoin(
+    #"Current FAB", 
+    {"SKU", "Channel"}, 
+    #"Recent Sale - SKU FAB Channel", 
+    {"SKU", "Channel"}, 
+    "Recent Sale - SKU Customer", 
+    JoinKind.LeftOuter
+  ), 
+  
+  // Filter out rows where the "Qty" column is zero
+  FilterOutZeroQty = Table.SelectRows(Source, each ([Qty] <> 0)), 
+  
+  // Add a new column "FAB.ASP" that calculates the average selling price (ASP) as Sales/Qty, rounded to 2 decimal places
+  CalculateAspColumn = Table.AddColumn(
+    FilterOutZeroQty, 
+    "FAB.ASP", 
+    each Number.Round([Sales] / [Qty], 2), 
+    Number.Type
+  ), 
+  
+  // Expand the "ASP" column from the "Recent Sale - SKU Customer" table into a new column "Macola.ASP"
+  ExpandMacolaAspAcg = Table.ExpandTableColumn(
+    CalculateAspColumn, 
+    "Recent Sale - SKU Customer", 
+    {"ASP"}, 
+    {"Macola.ASP"}
+  ), 
+  
+  // Perform another left outer join with the "Price List" table on "SKU" and "Channel" columns
+  MergePriceList = Table.NestedJoin(
+    ExpandMacolaAspAcg, 
+    {"SKU", "Channel"}, 
+    #"Price List", 
+    {"SKU", "Channel"}, 
+    "Price List", 
+    JoinKind.LeftOuter
+  ), 
+  
+  // Expand the "ASP" column from the "Price List" table into a new column "Price List.ASP"
+  ExpandPriceList = Table.ExpandTableColumn(
+    MergePriceList, 
+    "Price List", 
+    {"ASP"}, 
+    {"Price List.ASP"}
+  ), 
+
+    // Add a new column "Adjusted ASP1" that takes values from "FAB.ASP", "Macola.ASP" based on conditions
+  AdjustedAsp1 = Table.AddColumn(
+    ExpandPriceList, 
+    "Adjusted ASP1", 
+    each 
+      if 
+        [Macola.ASP] = null
+      then
+        [FAB.ASP]
+      else
+        [Macola.ASP]
+    ,Number.Type
+  ), 
+  
+  // Add a new column "Adjusted ASP2" that uses price list prices when they take effect
+  AdjustedAsp2 = 
+  Table.AddColumn(
+      AdjustedAsp1, 
+        "Adjusted ASP2", 
+        each 
+            if 
+                [Price List.ASP] = null
+            then
+                [Adjusted ASP1]
+            else
+                if
+                    [Price List.Effective Date] >= [Date]
+                then
+                    [Price List.ASP]
+                else
+                    [Adjusted ASP1]
+        ,Number.Type
+    )
+  , 
+  
+  // Add a new column "ASP Variance" that calculates the difference between "Adjusted ASP" and "FAB.ASP"
+  AspVariance = Table.AddColumn(
+    AdjustedAsp, 
+    "ASP Variance", 
+    each [Adjusted ASP] - [FAB.ASP], 
+    Number.Type
+  ), 
+  
+  // Add a new column "Sales Impact" that multiplies "ASP Variance" by "Qty" if "ASP Variance" is not null
+  SalesImpact = Table.AddColumn(
+    AspVariance, 
+    "Sales Impact", 
+    each if [ASP Variance] = null then null else [Qty] * [ASP Variance], 
+    Number.Type
+  )
+in
+  SalesImpact
+
+
+//////////////
+
+= Table.AddColumn(
+    ExpandActuals, 
+        "Sort By", 
+        each 
+            if
+                [Brand] is null
+            then
+                [Act.Brand] & " - " & [Act.Category]
+            else
+                [Brand] & " - " & [Account Description]
+    ,Text.Type
+)
+
+//////////////
+
+= Table.AddColumn(
+    ChangeTypesColumns, 
+        "Amount1", 
+        each 
+            if
+                Text.Contains([Value], "/" ) = true
+            then
+                [Value] 
+            else
+                null
+    ,Text.Type
+)
+
+//////////////
+
+= Table.AddColumn(
+    ChangeTypeNumber, 
+        "Amount", 
+        each 
+            if
+                [Amount1] is null
+            then
+                [Value] * 1
+            else
+                [Amount1]
+    ,Number.Type
+)
+
+
+//////////
+
+= Table.AddColumn(
+    ChangeEffectiveDateType, 
+        "Old Sales", 
+        each 
+            if
+                [Effective Date] = null
+                then
+                    [Sales]
+                else
+                    if
+                        [Effective Date] <= [Date]
+                    then
+                        if
+                            [FAB ASP Before Change] * [Qty] > [Sales]
+                        then
+                            [Sales]
+                    else
+                        [Sales]
+    ,Number.Type
+)
+
+//////////
+
+
+= Table.AddColumn(
+    AddChannelColumn, 
+        "Sales Variance", 
+        each 
+            if
+                [Old Sales] > [Sales]
+            then
+                [Value] * 1
+            else
+                [Amount1]
+    ,Number.Type
+)
+
+//////////
+
+
+= Table.AddColumn(
+    AddChannelColumn, 
+        "Increase", 
+        each 
+            [NEW PRICE] - [CURRENT PRICE]  
+            
+    ,Number.Type
+)
+
+//////////
+
+= Table.AddColumn(
+    IncreaseAmount, 
+        "Increase Percent", 
+        each 
+            [Increase] / [CURRENT PRICE]
+            
+    ,Number.Type
+)
+
+//////////
+
+= Table.AddColumn(
+    ChangesTypesAgain1, 
+        "Sales Less Increase", 
+        each 
+            if
+                [Effective Date.1] = null
+                then
+                    [Sales]
+                else
+                    if
+                        [Effective Date.1] <= [Date]
+                    then
+                        [Sales] / (1+[Increase Percent.1]) 
+                    else
+                        [Sales]
+    ,Number.Type
+)
+
+//////////
+
+= Table.AddColumn(
+    SalesLessIncrease, 
+        "Increase Impact", 
+        each 
+            [Sales] - [Sales Less Increase]
+            
+    ,Number.Type
+)
+
+
+///////
+
+= Table.AddColumn(
+    NewSalesColumn, 
+    "Cost New",
+        each 
+            if
+                [Adjusted ACG] = null
+            then
+                [Cost]
+            else
+                [Qty] * [Adjusted ACG]
+    , Number.Type
+)
+
+///
+
+= Table.AddColumn(
+    ExpandAspIncreases, 
+        "Sales New", 
+        each 
+            if
+                [Adjusted ASP] is null
+            then
+                [Sales]
+            else
+                [Adjusted ASP] * [Qty]
+    ,Number.Type
+)
+
+///
+
+= Table.AddColumn(
+    RemoveAspAcg, 
+        "Filter Zeros", 
+        each 
+            [Sales] + [Cost] + [Qty]
+    ,Number.Type
+)
+
+///
+
+= Table.AddColumn(
+    ReorderColumns, 
+        "YYYYMM", 
+        each 
+            let
+                TextDate = Text.From([Date])
+            //Text.End(Text.From([Date]),4)
+            Text.End(TextDate,4)
+    ,Number.Type
+)
+
+///
+
+= Table.AddColumn(
+    RemoveColumns, 
+        "Sales", 
+        each 
+            [Qty] * [NPD.ASP]
+    ,Number.Type
+)
+
+///
+
+= Table.AddColumn(
+    SalesColumnCalculated, 
+        "Cost", 
+        each 
+            [Qty] * [NPD.ACG]
+    ,Number.Type
+)
+
+///
+
+= Table.AddColumn(
+    ChangeTypes, 
+        "FilterOutFy24Bud", 
+        each 
+            Number.ToText([Financial Year]) & " " & [Group] & " " & [Type]
+    ,Text.Type
+)
+
+
+/////////
+
+
+
+let
+    Source = Excel.Workbook(File.Contents("C:\\Users\\tosborn\\OneDrive - Key Pharmaceuticals\\Desktop\\Chat GPT ADA - Woolies Data.xlsx"), null, true),
+    SheetData = Source{[Item="Data1", Kind="Sheet"]}[Data],
+
+    // Convert the table into a list of lists, where each sublist is a row
+    ListOfRows = List.Transform(Table.ToRows(SheetData), each List.Transform(_, each if _ is null then "" else Text.From(_))),
+
+    // Define the list of keywords to filter by
+    KeywordsList = {"Blistex", "No Doz", "Odor Eaters", "OdorEaters"},
+
+    // Filter the list of rows based on the presence of keywords
+    FilteredListOfRows = List.Select(ListOfRows, each let RowAsString = Text.Combine(_, " ") in List.AnyTrue(List.Transform(KeywordsList, each Text.Contains(RowAsString, _, Comparer.OrdinalIgnoreCase)))),
+
+    // Remove blank rows from each list
+    NoBlankRowsList = List.Transform(FilteredListOfRows, each List.Select(_, each Text.Trim(_) <> "")),
+
+    // Keep only the third last record from each list
+    ThirdLastRecord = List.Transform(NoBlankRowsList, each List.Range(_, List.Count(_) - 3, 1)),
+    FlattenedThirdLast = List.Combine(ThirdLastRecord),
+
+    // Keep rows containing any keyword from KeywordsList
+    RowsWithKeywords = List.Transform(NoBlankRowsList, each List.Select(_, each List.AnyTrue(List.Transform(KeywordsList, (keyword) => Text.Contains(_, keyword, Comparer.OrdinalIgnoreCase))))),
+    FlattenedKeywords = List.Combine(RowsWithKeywords),
+
+    // Custom function to check if a string is a date
+    IsDate = (text) => 
+        let 
+            parsed = try Date.FromText(text) 
+        in 
+            if parsed[HasError] then false else Type.Is(parsed[Value], type date),
+
+    // Keep rows that are in date format
+    RowsWithDates = List.Transform(NoBlankRowsList, each List.Select(_, each let result = try IsDate(_) in if result[HasError] then false else result[Value]))
+in
+    RowsWithDates
+
+
+////////////// debug function
+
+let
+    TestList = {"19.07.2023", "25.07.2023", "Blistex Lip Balm", "18.399999999999999", "Not a date"},
+    // Custom function to check if a string is a date
+    IsDate = (text) => 
+    let 
+        parsed = try Date.FromText(text),
+        reformatted = try Date.ToText(parsed[Value], "dd.MM.yyyy")
+    in 
+        not parsed[HasError] and not reformatted[HasError]
+
+
+    ,Results = List.Transform(TestList, each IsDate(_))
+in
+    Results
+
+
+    /////////
+
+let
+    Source = Excel.Workbook(File.Contents("C:\\Users\\tosborn\\OneDrive - Key Pharmaceuticals\\Desktop\\Chat GPT ADA - Woolies Data.xlsx"), null, true),
+    SheetData = Source{[Item="Data1", Kind="Sheet"]}[Data],
+
+    // Convert the table into a list of lists, where each sublist is a row
+    ListOfRows = List.Transform(Table.ToRows(SheetData), each List.Transform(_, each if _ is null then "" else Text.From(_))),
+
+    // Define the list of keywords to filter by
+    KeywordsList = {"Blistex", "No Doz", "Odor Eaters", "OdorEaters"},
+
+    // Filter the list of rows based on the presence of keywords
+    FilteredListOfRows = List.Select(ListOfRows, each let RowAsString = Text.Combine(_, " ") in List.AnyTrue(List.Transform(KeywordsList, each Text.Contains(RowAsString, _, Comparer.OrdinalIgnoreCase)))),
+
+        // Remove blank rows from each list
+    NoBlankRowsList = List.Transform(FilteredListOfRows, each List.Select(_, each Text.Trim(_) <> "")),
+    // Remove blank rows from each list
+    NoBlankRowsList1 = NoBlankRowsList{5},
+    ConvertToTable = Table.FromList(NoBlankRowsList1, Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+    // Custom function to check if a string is a date
+    IsDate = (text) => 
+        let 
+            parsed = try Date.FromText(text),
+            reformatted = try Date.ToText(parsed[Value], "dd.MM.yyyy")
+        in 
+            not parsed[HasError] and not reformatted[HasError]
+
+    // Add Column to test date function     
+    AddDateColumn = Table.AddColumn(ConvertToTable, "IsDate", each IsDate([Column1]), type logical)
+
+
+in
+    ConvertToTable
+
+
+//////
+
+/// first query to get claim number
+
+let
+    Source = Excel.Workbook(File.Contents("C:\\Users\\tosborn\\OneDrive - Key Pharmaceuticals\\Desktop\\Chat GPT ADA - Woolies Data.xlsx"), null, true),
+    SheetData = Source{[Item="Data1", Kind="Sheet"]}[Data],
+
+let
+
+    // Get the first row as a list
+    FirstRow = Table.ToRecords(Table.FirstN(SheetData, 1)){0},
+    FirstRowList = Record.FieldValues(FirstRow),
+
+    // Find the index of the cell containing "Claim No:"
+    ClaimNoIndex = List.PositionOf(FirstRowList, "Claim No:"),
+
+    // Get the claim number from the next cell
+    ClaimNumber = FirstRowList{ClaimNoIndex + 1}
+in
+    ClaimNumber
+
+//////  large query
+
+
+let
+    Source = Excel.Workbook(File.Contents("C:\\Users\\tosborn\\OneDrive - Key Pharmaceuticals\\Desktop\\Chat GPT ADA - Woolies Data.xlsx"), null, true),
+    SheetData = Source{[Item="Data1", Kind="Sheet"]}[Data],
+
+    // subquery to get claim number
+    
+        // Get the first row as a list
+        FirstRow = Table.ToRecords(Table.FirstN(SheetData, 1)){0},
+        FirstRowList = Record.FieldValues(FirstRow),
+
+        // Find the index of the cell containing "Claim No:"
+        ClaimNoIndex = List.PositionOf(FirstRowList, "Claim No:"),
+
+        // Get the claim number from the next cell
+        ClaimNumber = FirstRowList{ClaimNoIndex + 1}
+
+    // All types as text
+    ChangesAllTypesToText = Table.TransformColumnTypes(SheetData,{{"Column1", type text}, {"Column2", type text}, {"Column3", type text}, {"Column4", type text}, {"Column5", type text}, {"Column6", type text}, {"Column7", type text}, {"Column8", type text}, {"Column9", type text}, {"Column10", type text}, {"Column11", type text}, {"Column12", type text}, {"Column13", type text}, {"Column14", type text}, {"Column15", type text}, {"Column16", type text}}),
+
+    // Convert the table into a list of lists, where each sublist is a row
+    ListOfRows = List.Transform(Table.ToRows(ChangesAllTypesToText), each List.Transform(_, each if _ is null then "" else Text.From(_))),
+
+    // Define the list of keywords to filter by
+    KeywordsListToFilterBy = {"Blistex", "No Doz", "Odor Eaters", "OdorEaters"},
+
+    // Filter the list of rows based on the presence of keywords
+    FilteredListOfRows = List.Select(ListOfRows, each let RowAsString = Text.Combine(_, " ") in List.AnyTrue(List.Transform(KeywordsListToFilterBy, each Text.Contains(RowAsString, _, Comparer.OrdinalIgnoreCase)))),
+
+    // Remove blank rows from each list
+    NoBlankRowsList = List.Transform(FilteredListOfRows, each List.Select(_, each Text.Trim(_) <> "")),
+
+    // Keep only the third last record from each list
+    ThirdLastRecord = List.Transform(NoBlankRowsList, each List.LastN(_, 3){0}),
+    RowsWithKeywords = List.Transform(NoBlankRowsList, each List.Select(_, each List.AnyTrue(List.Transform(KeywordsListToFilterBy, (keyword) => Text.Contains(_, keyword, Comparer.OrdinalIgnoreCase))))),
+    FlattenedKeywords = List.Combine(RowsWithKeywords),
+
+    // Custom function to check if a string is a date
+    IsDate = (text) => 
+        let 
+            parsed = try Date.FromText(text),
+            reformatted = try Date.ToText(parsed[Value], "dd.MM.yyyy")
+        in 
+            not parsed[HasError] and not reformatted[HasError] and text = reformatted[Value],
+
+    // Keep rows that are in date format
+    RowsWithDates = List.Transform(NoBlankRowsList, each List.Select(_, each IsDate(_))),
+
+    // To combine all of the lists and records together in a table:
+
+        // Extract the first and second date from RowsWithDates
+    FirstDate = List.Transform(RowsWithDates, each List.First(_, null )),
+    SecondDate = List.Transform(RowsWithDates, each List.Skip(_, 1){0}),
+
+    // Combine the four lists into records
+    CombinedRecords = List.Transform(
+        List.Positions(FlattenedKeywords), 
+        each [
+            FlattenedKeywords = FlattenedKeywords{_}, 
+            FirstDate = FirstDate{_}, 
+            SecondDate = SecondDate{_}, 
+            ThirdLastRecord = ThirdLastRecord{_}
+        ]
+    ),
+
+    
+    // Convert the list of records into a table
+    FinalTable = Table.FromRecords(CombinedRecords),
+    ChangeTypes = Table.TransformColumnTypes(FinalTable,{{"FlattenedKeywords", type text}, {"FirstDate", type date}, {"SecondDate", type date}, {"ThirdLastRecord", type number}})
+in
+    ChangeTypes
+
+
+
+////
+
+let
+    Source = Excel.Workbook(File.Contents("C:\\Users\\tosborn\\OneDrive - Key Pharmaceuticals\\Desktop\\Chat GPT ADA - Woolies Data.xlsx"), null, true),
+    SheetData = Source{[Item="Data1", Kind="Sheet"]}[Data],
+    ChangesAllTypesToText = Table.TransformColumnTypes(SheetData,{{"Column1", type text}, {"Column2", type text}, {"Column3", type text}, {"Column4", type text}, {"Column5", type text}, {"Column6", type text}, {"Column7", type text}, {"Column8", type text}, {"Column9", type text}, {"Column10", type text}, {"Column11", type text}, {"Column12", type text}, {"Column13", type text}, {"Column14", type text}, {"Column15", type text}, {"Column16", type text}}),
+
+    // Convert the table into a list of lists, where each sublist is a row
+    ListOfRows = List.Transform(Table.ToRows(ChangesAllTypesToText), each List.Transform(_, each if _ is null then "" else Text.From(_))),
+
+    // Define the list of keywords to filter by
+    KeywordsListToFilterBy = {"Blistex", "No Doz", "Odor Eaters", "OdorEaters"},
+
+    // Filter the list of rows based on the presence of keywords
+    FilteredListOfRows = List.Select(ListOfRows, each let RowAsString = Text.Combine(_, " ") in List.AnyTrue(List.Transform(KeywordsListToFilterBy, each Text.Contains(RowAsString, _, Comparer.OrdinalIgnoreCase)))),
+
+    // Remove blank rows from each list
+    NoBlankRowsList = List.Transform(FilteredListOfRows, each List.Select(_, each Text.Trim(_) <> "")),
+
+    // Keep only the third last record from each list
+    ThirdLastRecord = List.Transform(NoBlankRowsList, each List.LastN(_, 3){0}),
+    RowsWithKeywords = List.Transform(NoBlankRowsList, each List.Select(_, each List.AnyTrue(List.Transform(KeywordsListToFilterBy, (keyword) => Text.Contains(_, keyword, Comparer.OrdinalIgnoreCase))))),
+    FlattenedKeywords = List.Combine(RowsWithKeywords),
+
+    // Custom function to check if a string is a date
+    IsDate = (text) => 
+        let 
+            parsed = try Date.FromText(text),
+            reformatted = try Date.ToText(parsed[Value], "dd.MM.yyyy")
+        in 
+            not parsed[HasError] and not reformatted[HasError] and text = reformatted[Value],
+
+    // Keep rows that are in date format
+    RowsWithDates = List.Transform(NoBlankRowsList, each List.Select(_, each IsDate(_))),
+
+    // To combine all of the lists and records together in a table:
+
+        // Extract the first and second date from RowsWithDates
+    FirstDate = List.Transform(RowsWithDates, each List.First(_, null )),
+    SecondDate = List.Transform(RowsWithDates, each List.Skip(_, 1){0}),
+
+    // Combine the four lists into records
+    CombinedRecords = List.Transform(
+        List.Positions(FlattenedKeywords), 
+        each [
+            FlattenedKeywords = FlattenedKeywords{_}, 
+            FirstDate = FirstDate{_}, 
+            SecondDate = SecondDate{_}, 
+            ThirdLastRecord = ThirdLastRecord{_}
+        ]
+    ),
+
+    
+    // Convert the list of records into a table
+    FinalTable = Table.FromRecords(CombinedRecords),
+    ChangeTypes = Table.TransformColumnTypes(FinalTable,{{"FlattenedKeywords", type text}, {"FirstDate", type date}, {"SecondDate", type date}, {"ThirdLastRecord", type number}})
+in
+    ChangeTypes
+
+
+
+
+
+
+
 
 
 /////////////////////
