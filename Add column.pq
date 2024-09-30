@@ -2670,3 +2670,67 @@ in
             Date.Type
 )
 
+Table.AddColumn(
+    AddMonthYearColumn,
+    "Current Month",
+    each 
+        if
+            [MonthOffset] = -1 
+        then
+            "Prior Month"
+        else
+            "Make Date Selection"
+    ,
+    type text
+)
+
+
+
+            if
+                [YearOffset] = 0
+            then
+            
+
+////////
+
+
+Table.AddColumn(
+    UnpivotColumns,
+    "Date",
+    each 
+        #date(
+            Number.FromText (Text.Start([FYear], 4 )) ,  // year
+            7,
+            1
+        )
+    ,
+    type text
+)
+
+////////
+
+Table.AddColumn(
+    AddDateColumn,
+    "Date Year End",
+    each 
+        #date(
+            Number.FromText (Text.Start([FYear], 4 )) ,  // year
+            6,
+            30
+        )
+    ,
+    type text
+)
+
+
+
+
+
+
+
+
+
+
+
+
+

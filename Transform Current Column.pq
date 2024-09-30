@@ -63,6 +63,17 @@ Text.Remove(
 )
 
 
-
+// transform the current column to add a "1-" to the column value
+= Table.TransformColumns(
+    UnpivotDatesValues,
+    {
+        {
+            "Attribute", 
+            each 
+                "1-" & _ , 
+                type date
+        }
+    }
+)
 
 
