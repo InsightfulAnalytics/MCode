@@ -1,0 +1,69 @@
+
+
+    let
+        Source = {0..1439},
+        #"Converted to Table" = Table.FromList(Source, Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+        #"Changed Type" = Table.TransformColumnTypes(#"Converted to Table",{{"Column1", Int64.Type}}),
+        #"Renamed Columns" = Table.RenameColumns(#"Changed Type",{{"Column1", "Minute Number"}}),
+        #"Inserted Division" = Table.AddColumn(#"Renamed Columns", "Division", each [Minute Number] / 1440, type number),
+        #"Changed Type1" = Table.TransformColumnTypes(#"Inserted Division",{{"Division", type time}}),
+        #"Renamed Columns1" = Table.RenameColumns(#"Changed Type1",{{"Division", "Time to the Minute"}}),
+        #"Inserted Integer-Division" = Table.AddColumn(#"Renamed Columns1", "5 min bucket", each Number.IntegerDivide([Minute Number], 5), Int64.Type),
+        #"Inserted Integer-Division1" = Table.AddColumn(#"Inserted Integer-Division", "10 min bucket", each Number.IntegerDivide([Minute Number], 10), Int64.Type),
+        #"Inserted Integer-Division2" = Table.AddColumn(#"Inserted Integer-Division1", "1 hour bucket", each Number.IntegerDivide([Minute Number], 60), Int64.Type),
+        #"Added Custom" = Table.AddColumn(#"Inserted Integer-Division2", "5 minute time slot", each [5 min bucket] * 5 / 1440),
+        #"Added Custom1" = Table.AddColumn(#"Added Custom", "10 minute time slot", each [10 min bucket] * 10/1440),
+        AddCustom2 = Table.AddColumn(#"Added Custom1", "1 hour time slot", each [1 hour bucket] * 60/1440),
+    Custom = Table.AddColumn(AddCustom2, "30 min time slot", each [1 hour bucket] * 30/1440)
+    ,
+        ChangeType4 = Table.TransformColumnTypes(Custom, {{"1 hour time slot", type time}, {"30 min time slot", type time}, {"5 minute time slot", type time}, {"10 minute time slot", type time}}),
+        // Add a new column to indicate AM or PM
+        #"Added Custom AMPM" = Table.AddColumn(ChangeType4, "AM/PM", each if Time.Hour([#"1 hour time slot"]) < 12 then "AM" else "PM", type text )
+    in
+        #"Added Custom AMPM"
+
+
+/// with 30 min time slot fixed
+
+    let
+        Source = {0..1439},
+        #"Converted to Table" = Table.FromList(Source, Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+        #"Changed Type" = Table.TransformColumnTypes(#"Converted to Table",{{"Column1", Int64.Type}}),
+        #"Renamed Columns" = Table.RenameColumns(#"Changed Type",{{"Column1", "Minute Number"}}),
+        #"Inserted Division" = Table.AddColumn(#"Renamed Columns", "Division", each [Minute Number] / 1440, type number),
+        #"Changed Type1" = Table.TransformColumnTypes(#"Inserted Division",{{"Division", type time}}),
+        #"Renamed Columns1" = Table.RenameColumns(#"Changed Type1",{{"Division", "Time to the Minute"}}),
+        #"Inserted Integer-Division" = Table.AddColumn(#"Renamed Columns1", "5 min bucket", each Number.IntegerDivide([Minute Number], 5), Int64.Type),
+        #"Inserted Integer-Division1" = Table.AddColumn(#"Inserted Integer-Division", "10 min bucket", each Number.IntegerDivide([Minute Number], 10), Int64.Type),
+        #"Inserted Integer-Division2" = Table.AddColumn(#"Inserted Integer-Division1", "1 hour bucket", each Number.IntegerDivide([Minute Number], 60), Int64.Type),
+        
+        // Add a 30-minute bucket
+        #"Inserted Integer-Division3" = Table.AddColumn(#"Inserted Integer-Division2", "30 min bucket", each Number.IntegerDivide([Minute Number], 30), Int64.Type),
+        
+        #"Added Custom" = Table.AddColumn(#"Inserted Integer-Division3", "5 minute time slot", each [5 min bucket] * 5 / 1440),
+        #"Added Custom1" = Table.AddColumn(#"Added Custom", "10 minute time slot", each [10 min bucket] * 10 / 1440),
+        #"Added Custom2" = Table.AddColumn(#"Added Custom1", "1 hour time slot", each [1 hour bucket] * 60 / 1440),
+        
+        // Correct the 30-minute time slot calculation
+        #"Added Custom3" = Table.AddColumn(#"Added Custom2", "30 min time slot", each [30 min bucket] * 30 / 1440),
+        
+        // Change column types to time
+        ChangeType4 = Table.TransformColumnTypes(
+            #"Added Custom3", 
+            {
+                {"1 hour time slot", type time}, 
+                {"30 min time slot", type time}, 
+                {"5 minute time slot", type time}, 
+                {"10 minute time slot", type time}
+            }
+        ),
+        
+        // Add a new column to indicate AM or PM based on the 1-hour time slot
+        #"Added Custom AMPM" = Table.AddColumn(
+            ChangeType4, 
+            "AM/PM", 
+            each if Time.Hour([#"1 hour time slot"]) < 12 then "AM" else "PM", 
+            type text 
+        )
+    in
+        #"Added Custom AMPM"
