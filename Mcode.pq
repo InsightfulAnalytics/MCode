@@ -20,7 +20,7 @@ Table.TransformColumnTypes(Table.AddColumn(#"Replace errors 3", "AgeBracket", ea
 
 Table.TransformColumnTypes(
     Table.AddColumn(
-        #"Replace errors 3", 
+        ReplaceErrors3, 
         "AgeBracket", 
         each let
             age = [AgeAtTimeOfAdmission]
@@ -38,4 +38,44 @@ Table.TransformColumnTypes(
             else if age >= 96 and age <= 105 then "96-105"
             else "Not Known"
     ),
-    {{"AgeBracket", type text}})
+    {{"AgeBracket", type text}}
+),
+
+///////////
+
+Table.TransformColumnTypes(
+    Table.AddColumn(
+        RemoveColumn, 
+        "Order", 
+        each let
+            age = [AgeBracket]
+        in
+            if age = "Newborn" then 0
+            else if age = "1-15" then 1
+            else if age = "16-25" then 2
+            else if age = "26-35" then 3
+            else if age = "36-45" then 4
+            else if age = "46-55" then 5
+            else if age = "56-65" then 6
+            else if age = "66-75" then 7
+            else if age = "76-85" then 8
+            else if age = "86-95" then 9
+            else if age = "96-105" then 10
+            else 11
+    ),
+    {{"Order", type Int64}}
+)
+
+
+//////////////
+
+
+let
+  Source = Sql.Database("TGC-AZ-SQL01", "e-pas PROD", [Query = "SELECT#(lf)-- Facility Details#(lf)ps.FACILITY_ID AS FacilityID,#(lf)f.FACILITY_NAME,#(lf)-- Session Details#(lf)ps.START_DATE AS SessionDate,#(lf)ps.START_TIME AS SessionStartTime,#(lf)ps.END_TIME AS SessionEndTime,#(lf)--Booking Details#(lf)b.BOOKING_ID AS BookingID,#(lf)b.BOOKING_DATE AS BookingDate,#(lf)b.START_TIME AS BookingStartTime,#(lf)b.END_TIME AS BookingEndTime,#(lf)--Provider Details#(lf)b.PROVIDER_ID AS ProviderID,#(lf)--Patient Details#(lf)bp.PERSON_ID AS PersonID#(lf)FROM pas.PROVIDER_SESSION AS ps #(lf)--LEFT JOIN pas.PROVIDER_SESSION_DETAIL AS psd ON ps.PROVIDER_SESSION_ID = psd.PROVIDER_SESSION_ID AND ps.START_DATE = psd.SESSION_DATE#(lf)LEFT JOIN pas.BOOKING AS b ON ps.START_DATE = b.BOOKING_DATE AND ps.FACILITY_ID = b.FACILITY_ID#(lf)--LEFT JOIN pas.BOOKING_EXTRACT bx ON b.BOOKING_ID = bx.BOOKING_ID#(lf)LEFT JOIN pas.BOOKING_PATIENT AS bp ON b.BOOKING_ID = bp.BOOKING_ID AND b.END_TIME <= ps.END_TIME AND b.START_TIME >= ps.START_TIME#(lf)LEFT JOIN pas.FACILITY AS f ON ps.FACILITY_ID = f.FACILITY_ID#(lf)WHERE ps.VERSION_NUMBER <> 0#(lf)ORDER BY SessionDate DESC#(lf)#(lf)"]),
+  #"Format Booking Date" = Table.TransformColumnTypes(Source, {{"BookingDate", type date}, {"BookingStartTime", type time}, {"BookingEndTime", type time}, {"SessionStartTime", type time}, {"SessionEndTime", type time}}),
+  AddSessionDuration = Table.TransformColumnTypes(Table.AddColumn(ChangeColumnTypes, "SessionDurationMinutes", each Duration.Hours([SessionEndTime]-[SessionStartTime])*60 + Duration.Minutes([SessionEndTime]-[SessionStartTime])), {{"SessionDurationMinutes", Int64.Type}}),
+  AddBookingDuration = Table.TransformColumnTypes(Table.AddColumn(AddSessionDuration, "BookingDurationMinutes", each Duration.Hours([BookingEndTime]-[BookingStartTime])*60 + Duration.Minutes([BookingEndTime]-[BookingStartTime])), {{"BookingDurationMinutes", Int64.Type}})
+in
+  AddBookingDuration
+
+
