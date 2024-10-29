@@ -2723,14 +2723,167 @@ Table.AddColumn(
 )
 
 
+////////
+
+Table.AddColumn(
+    ChangeTypes,
+    "Overnight Shift",
+    each 
+        if 
+            [EndTime] < [StartTime]    
+        then
+            1
+        else
+            0
+    ,
+    type text
+)
 
 
+////////
+
+Table.AddColumn(
+    AddOverNightShiftColumn,
+    "Start Date Time",
+    each 
+        [WorkDate]&[StartTime]
+    ,
+    type datetime
+)
+
+////////
+
+Table.AddColumn(
+    AddOverNightShiftColumn,
+    "End Date Time",
+    each 
+        [WorkDate]&[StartTime]
+    ,
+    type datetime
+)
+
+////////
+
+Table.AddColumn(
+    AddStartDateTimeColumn,
+    "End Date",
+    each 
+        Date.AddDays (
+            [WorkDate],
+            if 
+                [EndTime] < [StartTime]    
+            then
+                1
+            else
+                0
+        )
+    ,
+    type date
+)
 
 
+////////
+
+Table.AddColumn(
+    AddEndDateTimeColumn,
+    "Time Worked",
+    each 
+//        Time.Minute ( [End Date Time] - [Start Date Time])
+        Duration.TotalMinutes([End Date Time] - [Start Date Time])
+    ,
+    type number 
+)
 
 
+////////
+
+Table.AddColumn(
+    ExpandDimTime,
+    "DateTime",
+    each 
+        [Date]&[TimeKey]
+    ,
+    type datetime
+)
 
 
+////////
+
+Table.AddColumn(
+    AddColumnDateTime,
+    "Date Time 30 Min Time Slot",
+    each 
+        [Date]&[30 min time slot]
+    ,
+    type datetime
+)
 
 
+////////
+
+Table.AddColumn(
+    FilterOvernightShifts,
+    "EndTime Overnight",
+    each 
+        #time (24,0,0)
+    ,
+    type time
+)
+
+////////
+
+Table.AddColumn(
+    FilterOvernightShifts,
+    "Type",
+    each 
+        "Day Shift"
+    ,
+    type text
+)
+
+///////////
+
+  AddMinutesWorkedColumn = 
+    Table.AddColumn(
+        Source,
+        "Minutes Worked",
+        each 
+            try
+                Duration.TotalMinutes([EndTime] - [StartTime])
+            otherwise
+                null
+        ,
+        type number 
+    )
+
+///////////
+
+  AddMinutesWorkedColumn = 
+    Table.AddColumn(
+        AddTypeColumn,
+        "Minutes Worked",
+        each 
+            try
+                Duration.TotalMinutes([EndTime] - [StartTime])
+            otherwise
+                null
+        ,
+        type number 
+    )
+
+
+///////////
+
+  AddMinutesWorkedColumn = 
+    Table.AddColumn(
+        AddTypeColumn,
+        "Minutes Worked",
+        each 
+            try
+                [Hours Worked] * 60
+            otherwise
+                null
+        ,
+        type number 
+    )
 
