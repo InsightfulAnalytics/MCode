@@ -2888,7 +2888,14 @@ Table.AddColumn(
     )
 
 
+//////////////
 
+
+Table.SelectRows(
+    TableReplaceNulls, 
+    each 
+        not Text.Contains([Last Name], "Test") or not Text.Contains([Last Name], "test")
+    )
 
 
 
