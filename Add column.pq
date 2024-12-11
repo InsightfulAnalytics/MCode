@@ -2898,9 +2898,186 @@ Table.SelectRows(
     )
 
 
+///////////
+
+  AddSortColumn = 
+    Table.AddColumn(
+        AddTypeColumn,
+        "Sort",
+        each 
+            if [Employee Category] = "Full Time" then 1 else
+            if [Employee Category] = "Part Time" then 2 else 
+            3
+        ,
+        type number 
+    )
 
 
+///////////
+
+  AddFtPt_Column = 
+    Table.AddColumn(
+        AddSortColumn,
+        "Sort",
+        each 
+            if [Employee Category] = "Casual" then "Casual" else
+            "FT/PT"
+        ,
+        type text
+    )
 
 
+///////////
+
+  AddPayrollDateColumn = 
+    Table.AddColumn(
+        AddColumnDaysBetween,
+        "Payroll Date",
+        each 
+            if [Days Between] < 14 then [Prior End Date] else 
+            "FT/PT"
+        ,
+        type text
+    )
+
+///////////
+
+  AddColumnPriorDate = 
+    Table.AddColumn(
+        AddNextDateColumn,
+        "Days",
+        each 
+            Duration.Days( [Period End Date] - [Prior Date] )
+            
+        ,
+        type number
+    )
+
+///////////
+
+  AddColumnPriorDate = 
+    Table.AddColumn(
+        AddDaysBetweenColumn,
+        "Days Till Next Payrun",
+        each 
+            Duration.Days( [Next Date] - [Period End Date]  )
+            
+        ,
+        type date
+    )
 
 
+///////////
+
+  AddColumnPayrollDate = 
+    Table.AddColumn(
+        AddNextDateColumn,
+        "Days",
+        each 
+            if  [Days Since Prior Payrun] = 0       then [Period End Date]  else
+            if  [Gross] = 0                         then [Next Date]        else
+            if  [Days Sum] = 14                     then [Next Date]        else
+                [Period End Date]
+        ,
+        type date
+    )
+
+
+///////////
+
+  AddAmendedCategory = 
+    Table.AddColumn(
+        ChangeColumnTypes,
+        "Alt Category",
+        each 
+            if  [Casual- Ordinary Hours (Qty)] > 0  then "Casual"       else
+                [Employee Category]
+        ,
+        type text
+    )
+
+
+///////////
+
+  AddAmendedCategory = 
+    Table.AddColumn(
+        ChangeTypes,
+        "Age Bracket",
+        each 
+            if  [current_age] < 28 then "18-27" else 
+            if  [current_age] < 38 then "28-37" else 
+            if  [current_age] < 48 then "38-47" else 
+            if  [current_age] < 58 then "48-57" else 
+            if  [current_age] < 68 then "58-67" else 
+            if  [current_age] < 78 then "68-77" else 
+            if  [current_age] < 88 then "78-87" else 
+            "88 & over"           
+        ,
+        type text
+    )
+
+
+///////////
+
+  AddAmendedCategory = 
+    Table.AddColumn(
+        AgeBracket,
+        "Income Bracket",
+        each 
+            if  [yearly_income] < 12000 then "0-11K" else 
+            if  [yearly_income] < 50000 then "12-49K" else 
+            if  [yearly_income] < 100000 then "50-99K" else 
+            if  [yearly_income] < 150000 then "100-149K" else 
+            if  [yearly_income] < 200000 then "150-199K" else 
+            "200K+"
+        ,
+        type text
+    )
+
+///////////
+
+  AddAmendedCategory = 
+    Table.AddColumn(
+        IncomeBracket,
+        "Income Bracket Sort",
+        each 
+            if  [yearly_income] < 12000 then 0 else 
+            if  [yearly_income] < 50000 then 1 else 
+            if  [yearly_income] < 100000 then 2 else 
+            if  [yearly_income] < 150000 then 3 else 
+            if  [yearly_income] < 200000 then 4 else 
+            5
+        ,
+        Int64.Type
+    )
+
+
+///////////
+
+= Table.AddColumn(
+        IncomeSort,
+        "Credit Score Bracket",
+        each 
+            if  [credit_score] < 300 then "Low (<300)" else 
+            if  [credit_score] < 500 then "Fair (300-499)" else  
+            if  [credit_score] < 700 then "Good (500-699)" else  
+            if  [credit_score] < 800 then "Great (700-799)" else  
+            "Excellent (800+)"
+        ,
+        type text
+    )
+
+//////////
+
+= Table.AddColumn(
+        CreditScoreBracket,
+        "Credit Score Sort",
+        each 
+            if  [credit_score] < 300 then 5 else 
+            if  [credit_score] < 500 then 4 else  
+            if  [credit_score] < 700 then 3 else  
+            if  [credit_score] < 800 then 2 else  
+            1
+        ,
+        Int64.Type
+    )
