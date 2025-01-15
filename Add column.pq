@@ -3081,3 +3081,57 @@ Table.SelectRows(
         ,
         Int64.Type
     )
+
+
+///////////
+
+  AddKartColumn = 
+    Table.AddColumn(
+        AddRaceColumn,
+        "Kart Number",
+        each 
+            if
+                Text.Contains( [Column2] , "Kart")
+            then
+                [Column2]
+            else
+                null
+        ,
+        Text.Type 
+    )
+
+
+let
+    Source = /* your prior steps */,
+    FilterRows = /* your FilterRows step */,
+
+    // Add "TimesSeconds" column
+    AddTimesSeconds = Table.AddColumn(
+        FilterRows,
+        "TimesSeconds",
+        each
+            let
+                dtTry = try DateTime.From([Times]) // attempt to read [Times] as a DateTime
+            in
+                if dtTry[HasError] then
+                    // If not a valid DateTime, return column
+                    [Times]
+                else
+                    // If valid DateTime, extract hours/min/sec from the Time part
+                    Time.From([Times])
+    ),
+
+    // Convert that numeric (seconds) into a Duration
+    AddLapDuration = Table.AddColumn(
+        AddTimesSeconds,
+        "LapDuration",
+        each #duration(0, 0, 0, [TimesSeconds])
+    ),
+
+    // Clean up: remove old [Times], rename [LapDuration] to [Times], and set the Duration type
+    RemoveAndRename = Table.RemoveColumns(AddLapDuration, {"Times"}),
+    RenameColumn     = Table.RenameColumns(RemoveAndRename, {{"LapDuration","Times"}}),
+    Final           = Table.TransformColumnTypes(RenameColumn, {{"Times", type duration}})
+
+in
+    Final
