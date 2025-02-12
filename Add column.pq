@@ -3135,3 +3135,79 @@ let
 
 in
     Final
+
+///////////
+
+///////////
+
+  AddActualisedColumn = 
+    Table.AddColumn(
+        ReplaceZerosWithNull,
+        "actualised_volume_litre",
+        each 
+            if
+                [promotion_start_date] <= ICT_Max_Actual_Date
+            then
+                [actual_qty_in_litre]
+            else
+                [forecast_qty_in_litre]
+        ,
+        type number 
+    )
+
+
+///////////
+
+  AddQtyActualColumn = 
+    Table.AddColumn(
+        ExpandLitresPerCartonColumn,
+        "actual_volume_in_uom",
+        each 
+        	try 
+			Value.Divide ( [actual_qty_in_litre] , [Litres_per_carton] , 4)
+		otherwise 
+			null
+ 	
+        ,
+        type number 
+    )
+
+//////////
+
+  AddQtyActualisedColumn = 
+    Table.AddColumn(
+        ExpandLitresPerCartonColumn,
+        "actualised_volume_litre",
+        each 
+            if
+                [promotion_start_date] <= ICT_Max_Actual_Date
+            then
+                [actual_volume_in_uom]
+            else
+                [forecast_qty_in_carton]
+        ,
+        type number 
+    )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
