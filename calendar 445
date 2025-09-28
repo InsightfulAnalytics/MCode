@@ -1,0 +1,1056 @@
+// Calendar_445
+let
+    // Get today's date to use for offset calculations.
+    CurrentDate = Date.From(
+        DateTime.FixedLocalNow()
+    ),
+
+    // --- DATA SOURCE ---
+    // Connect to Power Platform Dataflows and navigate to the Calendar table.
+    Source = PowerPlatform.Dataflows(null),
+    NavigateToWorkspace = Source{[Id="Workspaces"]}[Data]
+        {[workspaceId="15e51ed2-d06d-4122-aafa-9f48b0cd083c"]}[Data],
+    NavigateToDataflow = NavigateToWorkspace
+        {[dataflowId="634df502-9495-42b2-9d92-26d070e18e4e"]}[Data],
+    GetDataflowEntity = NavigateToDataflow
+        {[entity="Calendar",version=""]}[Data],
+
+    // --- PREP & TRANSFORMATIONS ---
+    // Remove a column that is not needed for the final output.
+    RemoveUnusedColumns = Table.RemoveColumns(
+        GetDataflowEntity,
+        {"Fiscal Period Formatted"}
+    ),
+
+    // Add a 'Fiscal Mth' column with the three-letter month abbreviation.
+    AddFiscalMonthAbbreviation = Table.AddColumn(
+        RemoveUnusedColumns,
+        "Fiscal Mth",
+        each let
+            periodString = Text.End([Fiscal Year Period], 2),
+            monthName =
+                if periodString = "01" then "Jan"
+                else if periodString = "02" then "Feb"
+                else if periodString = "03" then "Mar"
+                else if periodString = "04" then "Apr"
+                else if periodString = "05" then "May"
+                else if periodString = "06" then "Jun"
+                else if periodString = "07" then "Jul"
+                else if periodString = "08" then "Aug"
+                else if periodString = "09" then "Sep"
+                else if periodString = "10" then "Oct"
+                else if periodString = "11" then "Nov"
+                else if periodString = "12" then "Dec"
+                else if periodString = "13" then "P13"
+                else null
+        in
+            monthName,
+        type text
+    ),
+
+    // Add a 'Fiscal Month & Year' column (e.g., "Jan-25").
+    AddFiscalMonthAndYear = Table.AddColumn(
+        AddFiscalMonthAbbreviation,
+        "Fiscal Month & Year",
+        each if [Fiscal Mth] <> null and [Fiscal Mth] <> "P13" and [Fiscal Year] <> null then
+            [Fiscal Mth] & "-" & Text.End(Text.From([Fiscal Year]), 2)
+        else
+            null,
+        type text
+    ),
+
+    // Add a numeric sort key for the fiscal month and year (e.g., 202501).
+    AddFiscalMonthYearSortKey = Table.AddColumn(
+        AddFiscalMonthAndYear,
+        "Fiscal MonthNYear",
+        each let
+            yearText = Text.From([Fiscal Year Number]),
+            periodText = Text.End([Fiscal Year Period], 2)
+        in
+            if yearText <> null and periodText <> null then
+                Number.FromText(yearText & periodText)
+            else
+                null,
+        Int64.Type
+    ),
+
+    // Add a numeric offset for the fiscal year from the current year.
+    AddFiscalYearOffset = Table.AddColumn(
+        AddFiscalMonthYearSortKey,
+        "Fiscal YearOffset",
+        each [Fiscal Year Number] - Date.Year(CurrentDate),
+        Int64.Type
+    ),
+
+    // Add a numeric offset for the fiscal month from the current month.
+    AddFiscalMonthOffset = Table.AddColumn(
+        AddFiscalYearOffset,
+        "Fiscal MonthOffset",
+        each
+            ([Fiscal Year Number] * 12 + Number.FromText(Text.End([Fiscal Year Period], 2))) -
+            (Date.Year(CurrentDate) * 12 + Date.Month(CurrentDate)),
+        Int64.Type
+    ),
+
+    // Add a numeric sort column for the fiscal month (1-13).
+    AddFiscalMonthSort = Table.AddColumn(
+        AddFiscalMonthOffset,
+        "Fiscal Mth Sort",
+        each Number.FromText(Text.End([Fiscal Year Period], 2)),
+        Int64.Type
+    ),
+
+    // Rename the date column to its final key name.
+    RenameCalendarDateColumn = Table.RenameColumns(
+        AddFiscalMonthSort,
+        {{"Calendar Date", "1Cal_Day.Key"}}
+    ),
+
+    // Add a column for the start of the week date, assuming Monday is the first day.
+    AddStartOfWeek = Table.AddColumn(
+        RenameCalendarDateColumn,
+        "Fiscal StartOfWeek",
+        each Date.StartOfWeek([#"1Cal_Day.Key"], Day.Monday),
+        type date
+    ),
+
+    // --- WEEK OFFSET CALCULATION ---
+    // The following steps calculate a relative week offset from the current week.
+
+    // 1. Create a distinct list of fiscal weeks with their start date.
+    GroupDataByFiscalWeek = Table.Group(
+        AddStartOfWeek,
+        {"Fiscal Year Week"},
+        {{"MinDate", each List.Min([#"1Cal_Day.Key"]), type date}}
+    ),
+    SortByWeekStartDate = Table.Sort(
+        GroupDataByFiscalWeek,
+        {{"MinDate", Order.Ascending}}
+    ),
+    AddWeekIndex = Table.AddIndexColumn(
+        SortByWeekStartDate, "WeekIndex", 0, 1
+    ),
+
+    // 2. Merge the week index back into the main calendar table.
+    MergeWeekIndex = Table.NestedJoin(
+        AddStartOfWeek, {"Fiscal Year Week"},
+        AddWeekIndex, {"Fiscal Year Week"},
+        "WeekData",
+        JoinKind.LeftOuter
+    ),
+    ExpandWeekIndexData = Table.ExpandTableColumn(
+        MergeWeekIndex,
+        "WeekData",
+        {"MinDate", "WeekIndex"},
+        {"MinDate", "WeekIndex"}
+    ),
+
+    // 3. Find the index for the current week.
+    FindCurrentDateRow = Table.SelectRows(
+        ExpandWeekIndexData,
+        each [#"1Cal_Day.Key"] = CurrentDate
+    ),
+    GetCurrentWeekIndex = if Table.IsEmpty(FindCurrentDateRow) then
+        null
+    else
+        FindCurrentDateRow{0}[WeekIndex],
+
+    // 4. Calculate the offset for each week relative to the current week.
+    AddFiscalWeekOffset = Table.AddColumn(
+        ExpandWeekIndexData,
+        "Fiscal WeekOffset",
+        each if [WeekIndex] <> null and GetCurrentWeekIndex <> null then
+            [WeekIndex] - GetCurrentWeekIndex
+        else
+            null,
+        Int64.Type
+    ),
+
+    // Remove temporary columns used for the week offset calculation.
+    RemoveTemporaryWeekColumns = Table.RemoveColumns(
+        AddFiscalWeekOffset,
+        {"MinDate", "WeekIndex"}
+    ),
+
+    // --- FINAL CLEANUP ---
+    // Set the data types for several numeric columns.
+    SetColumnTypes = Table.TransformColumnTypes(
+        RemoveTemporaryWeekColumns,
+        {
+            {"Day of Month", Int64.Type},
+            {"Month No", Int64.Type},
+            {"Comp_Fisc_Year", Int64.Type},
+            {"Comp_Fisc_Year.Key", Int64.Type},
+            {"Year", Int64.Type},
+            {"Day of Week", Int64.Type}
+        }
+    ),
+
+    // Set the data type for a date key using a specific locale.
+    SetDateTypeWithLocale = Table.TransformColumnTypes(
+        SetColumnTypes,
+        {{"Comp_Fisc_Date.Key", type date}},
+        "en-AU"
+    ),
+
+    // Rename fiscal year columns for clarity in the final model.
+    RenameFiscalYearColumns = Table.RenameColumns(
+        SetDateTypeWithLocale,
+        {
+            {"Fiscal Year", "Fiscal Year Text"},
+            {"Fiscal Year Number", "Fiscal Year"}
+        }
+    ),
+
+    // Add a 'Fiscal Half Year' column (e.g., "FY25 H1").
+    AddFiscalHalfYear = Table.AddColumn(
+        RenameFiscalYearColumns,
+        "Fiscal Half Year",
+        each let
+            yearShort = "FY" & Text.End([Fiscal Year Text], 2),
+            half = if List.Contains({"FQ1", "FQ2"}, [Fiscal Quarter]) then
+                    "H1"
+                   else
+                    "H2"
+        in
+            yearShort & " " & half,
+        type text
+    ),
+
+    // --- SEASONAL DATA MERGE ---
+    // Merge seasonal data (KSP) from another query.
+    MergeSeasonalDates = Table.NestedJoin(
+        AddFiscalHalfYear, {"Fiscal StartOfWeek"},
+        Seasonal_Dates, {"Start of week"},
+        "Seasonal_Dates",
+        JoinKind.LeftOuter
+    ),
+    ExpandSeasonalDates = Table.ExpandTableColumn(
+        MergeSeasonalDates,
+        "Seasonal_Dates",
+        {"KSP Flag", "KSP"},
+        {"KSP Flag", "KSP"}
+    ),
+
+    // Clean up KSP data by replacing blanks and adding filter-friendly columns.
+    ReplaceBlankKSPValuesWithNull = Table.ReplaceValue(
+        ExpandSeasonalDates, "", null, Replacer.ReplaceValue, {"KSP Flag", "KSP"}
+    ),
+    AddKSPFilterColumn = Table.AddColumn(
+        ReplaceBlankKSPValuesWithNull,
+        "KSP Filter",
+        each if [KSP] = null then "Non-KSP" else [KSP],
+        type text
+    ),
+    AddKSPFlagFilterColumn = Table.AddColumn(
+        AddKSPFilterColumn,
+        "KSP Flag Filter",
+        each if [KSP Flag] = null then "Non-KSP" else [KSP Flag],
+        type text
+    ),
+
+    // Add a numeric week number column (1-53).
+    AddFiscalWeekNumberOfYear = Table.AddColumn(
+        AddKSPFlagFilterColumn,
+        "Fiscal Week Number Of Year",
+        each Number.FromText(Text.End([Fiscal Week], 2)),
+        Int64.Type
+    ),
+
+    // Add a column for slicers to easily select the 'Current Month'.
+    AddMonthSelectionColumn = Table.AddColumn(
+        AddFiscalWeekNumberOfYear,
+        "Month Selection",
+        each if [Fiscal MonthOffset] = 0 then "Current Month" else [#"Fiscal Month & Year"],
+        type text
+    )
+in
+    AddMonthSelectionColumn
+
+// Seasonal_Dates
+let
+
+    // Retrieve today's date (local time)
+    CurrentDate = Date.From(DateTime.FixedLocalNow()),
+
+    // Define the file name and SharePoint site folder URL
+    File = "Seasonal Dates.xlsx",
+    Folder = "https://lionco.sharepoint.com/sites/RevenueGrowthManagementInitiative",
+    
+    // Get a list of files from the SharePoint folder
+    Source = SharePoint.Files(Folder, [ApiVersion = 15]),
+    
+    // Filter the list to locate the specific Excel file
+    FilterFile = Table.SelectRows(Source, each [Name] = File),
+    
+    // Extract the binary content of the Excel file
+    ExtractedExcel = FilterFile{[Name = File]}[Content],
+    
+    // Load the Excel workbook (each sheet/table is returned as a separate table)
+    Workbook = Excel.Workbook(ExtractedExcel, true),
+
+    // filter the table for the calendar & drill down to the content
+    FilterTable = Table.SelectRows(Workbook, each ([Kind] = "Table") and ([Name] = "tbl_Dates")),
+    DrillDownTableContents = FilterTable{0}[Data],
+  RemoveDuplicates = Table.Distinct(DrillDownTableContents, {"Anaplan Date"})
+
+in
+    RemoveDuplicates
+
+
+// Calendar_Selection
+let
+    // Select specific columns from the calendar table, including the offset.
+    SelectColumns = Table.SelectColumns(
+        Calendar_445,
+        {
+            "1Cal_Day.Key",
+            "Fiscal Year",
+            "Fiscal MonthOffset",
+            "Fiscal Month & Year",
+            "Fiscal YearOffset"
+        }
+    ),
+
+    // Filter rows to keep only the previous, current, and next fiscal years.
+    FilterByOffset = Table.SelectRows(
+        SelectColumns,
+        each List.Contains({-1, 0, 1}, [Fiscal YearOffset])
+    ),
+
+    // Add a conditional column for the 'YTD' selection.
+    // This includes dates from the start of the current fiscal year up to the end of the previous month.
+    AddYTDColumn = Table.AddColumn(
+        FilterByOffset,
+        "YTD",
+        each if [Fiscal YearOffset] = 0 and [Fiscal MonthOffset] < 0 then "YTD" else null
+    ),
+
+    // Add a conditional column for the 'YTG' selection.
+    // This includes dates from the current month to the end of the current fiscal year.
+    AddYTGColumn = Table.AddColumn(
+        AddYTDColumn,
+        "YTG",
+        each if [Fiscal YearOffset] = 0 and [Fiscal MonthOffset] >= 0 then "YTG" else null
+    ),
+
+    // Add a conditional column for the 'N3M' selection.
+    // This includes the current month and the next two months.
+    AddN3MColumn = Table.AddColumn(
+        AddYTGColumn,
+        "N3M",
+        each if List.Contains({0, 1, 2}, [Fiscal MonthOffset]) then "N3M" else null
+    ),
+
+    // Add a conditional column for the 'Full Year' selection.
+    // This includes all dates within the current fiscal year.
+    AddFullYearColumn = Table.AddColumn(
+        AddN3MColumn,
+        "Full Year",
+        each if [Fiscal YearOffset] = 0 then "Full Year" else null
+    ),
+
+    // Unpivot the newly added selection columns to create rows for each applicable category.
+    UnpivotSelections = Table.UnpivotOtherColumns(
+        AddFullYearColumn,
+        {"1Cal_Day.Key", "Fiscal Year", "Fiscal MonthOffset", "Fiscal Month & Year", "Fiscal YearOffset"},
+        "Attribute",
+        "Selection"
+    ),
+
+    // Remove the helper 'Attribute' column as it's no longer needed.
+    RemoveAttributeColumn = Table.RemoveColumns(
+        UnpivotSelections,
+        {"Attribute"}
+    ),
+  #"Changed column type" = Table.TransformColumnTypes(RemoveAttributeColumn, {{"Selection", type text}})
+
+in
+    #"Changed column type"
+
+// Calendar_445
+let
+    // Get today's date to use for offset calculations.
+    CurrentDate = Date.From(
+        DateTime.FixedLocalNow()
+    ),
+
+    // --- DATA SOURCE ---
+    // Connect to Power Platform Dataflows and navigate to the Calendar table.
+    Source = PowerPlatform.Dataflows(null),
+    NavigateToWorkspace = Source{[Id="Workspaces"]}[Data]
+        {[workspaceId="15e51ed2-d06d-4122-aafa-9f48b0cd083c"]}[Data],
+    NavigateToDataflow = NavigateToWorkspace
+        {[dataflowId="634df502-9495-42b2-9d92-26d070e18e4e"]}[Data],
+    GetDataflowEntity = NavigateToDataflow
+        {[entity="Calendar",version=""]}[Data],
+
+    // --- PREP & TRANSFORMATIONS ---
+    // Remove a column that is not needed for the final output.
+    RemoveUnusedColumns = Table.RemoveColumns(
+        GetDataflowEntity,
+        {"Fiscal Period Formatted"}
+    ),
+
+    // Add a 'Fiscal Mth' column with the three-letter month abbreviation.
+    AddFiscalMonthAbbreviation = Table.AddColumn(
+        RemoveUnusedColumns,
+        "Fiscal Mth",
+        each let
+            periodString = Text.End([Fiscal Year Period], 2),
+            monthName =
+                if periodString = "01" then "Jan"
+                else if periodString = "02" then "Feb"
+                else if periodString = "03" then "Mar"
+                else if periodString = "04" then "Apr"
+                else if periodString = "05" then "May"
+                else if periodString = "06" then "Jun"
+                else if periodString = "07" then "Jul"
+                else if periodString = "08" then "Aug"
+                else if periodString = "09" then "Sep"
+                else if periodString = "10" then "Oct"
+                else if periodString = "11" then "Nov"
+                else if periodString = "12" then "Dec"
+                else if periodString = "13" then "P13"
+                else null
+        in
+            monthName,
+        type text
+    ),
+
+    // Add a 'Fiscal Month & Year' column (e.g., "Jan-25").
+    AddFiscalMonthAndYear = Table.AddColumn(
+        AddFiscalMonthAbbreviation,
+        "Fiscal Month & Year",
+        each if [Fiscal Mth] <> null and [Fiscal Mth] <> "P13" and [Fiscal Year] <> null then
+            [Fiscal Mth] & "-" & Text.End(Text.From([Fiscal Year]), 2)
+        else
+            null,
+        type text
+    ),
+
+    // Add a numeric sort key for the fiscal month and year (e.g., 202501).
+    AddFiscalMonthYearSortKey = Table.AddColumn(
+        AddFiscalMonthAndYear,
+        "Fiscal MonthNYear",
+        each let
+            yearText = Text.From([Fiscal Year Number]),
+            periodText = Text.End([Fiscal Year Period], 2)
+        in
+            if yearText <> null and periodText <> null then
+                Number.FromText(yearText & periodText)
+            else
+                null,
+        Int64.Type
+    ),
+
+    // Add a numeric offset for the fiscal year from the current year.
+    AddFiscalYearOffset = Table.AddColumn(
+        AddFiscalMonthYearSortKey,
+        "Fiscal YearOffset",
+        each [Fiscal Year Number] - Date.Year(CurrentDate),
+        Int64.Type
+    ),
+
+    // Add a numeric offset for the fiscal month from the current month.
+    AddFiscalMonthOffset = Table.AddColumn(
+        AddFiscalYearOffset,
+        "Fiscal MonthOffset",
+        each
+            ([Fiscal Year Number] * 12 + Number.FromText(Text.End([Fiscal Year Period], 2))) -
+            (Date.Year(CurrentDate) * 12 + Date.Month(CurrentDate)),
+        Int64.Type
+    ),
+
+    // Add a numeric sort column for the fiscal month (1-13).
+    AddFiscalMonthSort = Table.AddColumn(
+        AddFiscalMonthOffset,
+        "Fiscal Mth Sort",
+        each Number.FromText(Text.End([Fiscal Year Period], 2)),
+        Int64.Type
+    ),
+
+    // Rename the date column to its final key name.
+    RenameCalendarDateColumn = Table.RenameColumns(
+        AddFiscalMonthSort,
+        {{"Calendar Date", "1Cal_Day.Key"}}
+    ),
+
+    // Add a column for the start of the week date, assuming Monday is the first day.
+    AddStartOfWeek = Table.AddColumn(
+        RenameCalendarDateColumn,
+        "Fiscal StartOfWeek",
+        each Date.StartOfWeek([#"1Cal_Day.Key"], Day.Monday),
+        type date
+    ),
+
+    // --- WEEK OFFSET CALCULATION ---
+    // The following steps calculate a relative week offset from the current week.
+
+    // 1. Create a distinct list of fiscal weeks with their start date.
+    GroupDataByFiscalWeek = Table.Group(
+        AddStartOfWeek,
+        {"Fiscal Year Week"},
+        {{"MinDate", each List.Min([#"1Cal_Day.Key"]), type date}}
+    ),
+    SortByWeekStartDate = Table.Sort(
+        GroupDataByFiscalWeek,
+        {{"MinDate", Order.Ascending}}
+    ),
+    AddWeekIndex = Table.AddIndexColumn(
+        SortByWeekStartDate, "WeekIndex", 0, 1
+    ),
+
+    // 2. Merge the week index back into the main calendar table.
+    MergeWeekIndex = Table.NestedJoin(
+        AddStartOfWeek, {"Fiscal Year Week"},
+        AddWeekIndex, {"Fiscal Year Week"},
+        "WeekData",
+        JoinKind.LeftOuter
+    ),
+    ExpandWeekIndexData = Table.ExpandTableColumn(
+        MergeWeekIndex,
+        "WeekData",
+        {"MinDate", "WeekIndex"},
+        {"MinDate", "WeekIndex"}
+    ),
+
+    // 3. Find the index for the current week.
+    FindCurrentDateRow = Table.SelectRows(
+        ExpandWeekIndexData,
+        each [#"1Cal_Day.Key"] = CurrentDate
+    ),
+    GetCurrentWeekIndex = if Table.IsEmpty(FindCurrentDateRow) then
+        null
+    else
+        FindCurrentDateRow{0}[WeekIndex],
+
+    // 4. Calculate the offset for each week relative to the current week.
+    AddFiscalWeekOffset = Table.AddColumn(
+        ExpandWeekIndexData,
+        "Fiscal WeekOffset",
+        each if [WeekIndex] <> null and GetCurrentWeekIndex <> null then
+            [WeekIndex] - GetCurrentWeekIndex
+        else
+            null,
+        Int64.Type
+    ),
+
+    // Remove temporary columns used for the week offset calculation.
+    RemoveTemporaryWeekColumns = Table.RemoveColumns(
+        AddFiscalWeekOffset,
+        {"MinDate", "WeekIndex"}
+    ),
+
+    // --- FINAL CLEANUP ---
+    // Set the data types for several numeric columns.
+    SetColumnTypes = Table.TransformColumnTypes(
+        RemoveTemporaryWeekColumns,
+        {
+            {"Day of Month", Int64.Type},
+            {"Month No", Int64.Type},
+            {"Comp_Fisc_Year", Int64.Type},
+            {"Comp_Fisc_Year.Key", Int64.Type},
+            {"Year", Int64.Type},
+            {"Day of Week", Int64.Type}
+        }
+    ),
+
+    // Set the data type for a date key using a specific locale.
+    SetDateTypeWithLocale = Table.TransformColumnTypes(
+        SetColumnTypes,
+        {{"Comp_Fisc_Date.Key", type date}},
+        "en-AU"
+    ),
+
+    // Rename fiscal year columns for clarity in the final model.
+    RenameFiscalYearColumns = Table.RenameColumns(
+        SetDateTypeWithLocale,
+        {
+            {"Fiscal Year", "Fiscal Year Text"},
+            {"Fiscal Year Number", "Fiscal Year"}
+        }
+    ),
+
+    // Add a 'Fiscal Half Year' column (e.g., "FY25 H1").
+    AddFiscalHalfYear = Table.AddColumn(
+        RenameFiscalYearColumns,
+        "Fiscal Half Year",
+        each let
+            yearShort = "FY" & Text.End([Fiscal Year Text], 2),
+            half = if List.Contains({"FQ1", "FQ2"}, [Fiscal Quarter]) then
+                    "H1"
+                   else
+                    "H2"
+        in
+            yearShort & " " & half,
+        type text
+    ),
+
+    // --- SEASONAL DATA MERGE ---
+    // Merge seasonal data (KSP) from another query.
+    MergeSeasonalDates = Table.NestedJoin(
+        AddFiscalHalfYear, {"Fiscal StartOfWeek"},
+        Seasonal_Dates, {"Start of week"},
+        "Seasonal_Dates",
+        JoinKind.LeftOuter
+    ),
+    ExpandSeasonalDates = Table.ExpandTableColumn(
+        MergeSeasonalDates,
+        "Seasonal_Dates",
+        {"KSP Flag", "KSP"},
+        {"KSP Flag", "KSP"}
+    ),
+
+    // Clean up KSP data by replacing blanks and adding filter-friendly columns.
+    ReplaceBlankKSPValuesWithNull = Table.ReplaceValue(
+        ExpandSeasonalDates, "", null, Replacer.ReplaceValue, {"KSP Flag", "KSP"}
+    ),
+    AddKSPFilterColumn = Table.AddColumn(
+        ReplaceBlankKSPValuesWithNull,
+        "KSP Filter",
+        each if [KSP] = null then "Non-KSP" else [KSP],
+        type text
+    ),
+    AddKSPFlagFilterColumn = Table.AddColumn(
+        AddKSPFilterColumn,
+        "KSP Flag Filter",
+        each if [KSP Flag] = null then "Non-KSP" else [KSP Flag],
+        type text
+    ),
+
+    // Add a numeric week number column (1-53).
+    AddFiscalWeekNumberOfYear = Table.AddColumn(
+        AddKSPFlagFilterColumn,
+        "Fiscal Week Number Of Year",
+        each Number.FromText(Text.End([Fiscal Week], 2)),
+        Int64.Type
+    ),
+
+    // Add a column for slicers to easily select the 'Current Month'.
+    AddMonthSelectionColumn = Table.AddColumn(
+        AddFiscalWeekNumberOfYear,
+        "Month Selection",
+        each if [Fiscal MonthOffset] = 0 then "Current Month" else [#"Fiscal Month & Year"],
+        type text
+    )
+in
+    AddMonthSelectionColumn
+
+// Seasonal_Dates
+let
+
+    // Retrieve today's date (local time)
+    CurrentDate = Date.From(DateTime.FixedLocalNow()),
+
+    // Define the file name and SharePoint site folder URL
+    File = "Seasonal Dates.xlsx",
+    Folder = "https://lionco.sharepoint.com/sites/RevenueGrowthManagementInitiative",
+    
+    // Get a list of files from the SharePoint folder
+    Source = SharePoint.Files(Folder, [ApiVersion = 15]),
+    
+    // Filter the list to locate the specific Excel file
+    FilterFile = Table.SelectRows(Source, each [Name] = File),
+    
+    // Extract the binary content of the Excel file
+    ExtractedExcel = FilterFile{[Name = File]}[Content],
+    
+    // Load the Excel workbook (each sheet/table is returned as a separate table)
+    Workbook = Excel.Workbook(ExtractedExcel, true),
+
+    // filter the table for the calendar & drill down to the content
+    FilterTable = Table.SelectRows(Workbook, each ([Kind] = "Table") and ([Name] = "tbl_Dates")),
+    DrillDownTableContents = FilterTable{0}[Data],
+  RemoveDuplicates = Table.Distinct(DrillDownTableContents, {"Anaplan Date"})
+
+in
+    RemoveDuplicates
+
+// Calendar_Selection_LY
+let
+    // Select key columns from the calendar table,
+    // including offsets for time-relative calculations.
+    SelectColumns = Table.SelectColumns(
+        Calendar_445,
+        {
+            "1Cal_Day.Key",
+            "Fiscal Year",
+            "Fiscal MonthOffset",
+            "Fiscal Month & Year",
+            "Fiscal YearOffset"
+        }
+    ),
+
+    // Filter rows to keep only the previous fiscal year.
+    FilterToLastYear = Table.SelectRows(
+        SelectColumns,
+        each [Fiscal YearOffset] = -1
+    ),
+
+    // Add a conditional column for 'Full Year LY'.
+    // This flags every date in the previous fiscal year.
+    AddFullYearLYColumn = Table.AddColumn(
+        FilterToLastYear,
+        "Full Year LY",
+        each "Full Year LY",
+        type text
+    ),
+
+    // Add a conditional column for 'N3M LY'.
+    // This flags the equivalent of the current and next two months, but for last year.
+    // Offsets are -12 (current month LY), -11 (next month LY), and -10 (month after LY).
+    AddN3MLYColumn = Table.AddColumn(
+        AddFullYearLYColumn,
+        "N3M LY",
+        each if List.Contains({-12, -11, -10}, [Fiscal MonthOffset]) then "N3M LY" else null,
+        type text
+    ),
+
+    // Add a conditional column for 'YTD LY'.
+    // This flags dates from the start of the previous fiscal year up to the equivalent of last month.
+    // The offset for this month last year is -12, so any prior month in that year is YTD LY.
+    AddYTDLYColumn = Table.AddColumn(
+        AddN3MLYColumn,
+        "YTD LY",
+        each if [Fiscal MonthOffset] < -12 then "YTD LY" else null,
+        type text
+    ),
+
+    // Add a conditional column for 'YTG LY'.
+    // This flags dates from this month last year to the end of the previous fiscal year.
+    AddYTGLYColumn = Table.AddColumn(
+        AddYTDLYColumn,
+        "YTG LY",
+        each if [Fiscal MonthOffset] >= -12 then "YTG LY" else null,
+        type text
+    ),
+
+    // Unpivot the new selection columns into a single column.
+    // This transforms the table from a wide to a long format.
+    UnpivotSelections = Table.UnpivotOtherColumns(
+        AddYTGLYColumn,
+        {
+            "1Cal_Day.Key", 
+            "Fiscal Year", 
+            "Fiscal MonthOffset", 
+            "Fiscal Month & Year", 
+            "Fiscal YearOffset"
+        },
+        "Attribute",
+        "Selection"
+    ),
+
+    // Remove the helper 'Attribute' column, as it's no longer needed.
+    RemoveAttributeColumn = Table.RemoveColumns(
+        UnpivotSelections,
+        {"Attribute"}
+    ),
+    
+    // Filter out rows where no selection was made (i.e., the value is null).
+    FilterNullSelections = Table.SelectRows(
+        RemoveAttributeColumn, 
+        each ([Selection] <> null)
+    )
+
+in
+    FilterNullSelections
+
+// Calendar_445
+let
+    // Get today's date to use for offset calculations.
+    CurrentDate = Date.From(
+        DateTime.FixedLocalNow()
+    ),
+
+    // --- DATA SOURCE ---
+    // Connect to Power Platform Dataflows and navigate to the Calendar table.
+    Source = PowerPlatform.Dataflows(null),
+    NavigateToWorkspace = Source{[Id="Workspaces"]}[Data]
+        {[workspaceId="15e51ed2-d06d-4122-aafa-9f48b0cd083c"]}[Data],
+    NavigateToDataflow = NavigateToWorkspace
+        {[dataflowId="634df502-9495-42b2-9d92-26d070e18e4e"]}[Data],
+    GetDataflowEntity = NavigateToDataflow
+        {[entity="Calendar",version=""]}[Data],
+
+    // --- PREP & TRANSFORMATIONS ---
+    // Remove a column that is not needed for the final output.
+    RemoveUnusedColumns = Table.RemoveColumns(
+        GetDataflowEntity,
+        {"Fiscal Period Formatted"}
+    ),
+
+    // Add a 'Fiscal Mth' column with the three-letter month abbreviation.
+    AddFiscalMonthAbbreviation = Table.AddColumn(
+        RemoveUnusedColumns,
+        "Fiscal Mth",
+        each let
+            periodString = Text.End([Fiscal Year Period], 2),
+            monthName =
+                if periodString = "01" then "Jan"
+                else if periodString = "02" then "Feb"
+                else if periodString = "03" then "Mar"
+                else if periodString = "04" then "Apr"
+                else if periodString = "05" then "May"
+                else if periodString = "06" then "Jun"
+                else if periodString = "07" then "Jul"
+                else if periodString = "08" then "Aug"
+                else if periodString = "09" then "Sep"
+                else if periodString = "10" then "Oct"
+                else if periodString = "11" then "Nov"
+                else if periodString = "12" then "Dec"
+                else if periodString = "13" then "P13"
+                else null
+        in
+            monthName,
+        type text
+    ),
+
+    // Add a 'Fiscal Month & Year' column (e.g., "Jan-25").
+    AddFiscalMonthAndYear = Table.AddColumn(
+        AddFiscalMonthAbbreviation,
+        "Fiscal Month & Year",
+        each if [Fiscal Mth] <> null and [Fiscal Mth] <> "P13" and [Fiscal Year] <> null then
+            [Fiscal Mth] & "-" & Text.End(Text.From([Fiscal Year]), 2)
+        else
+            null,
+        type text
+    ),
+
+    // Add a numeric sort key for the fiscal month and year (e.g., 202501).
+    AddFiscalMonthYearSortKey = Table.AddColumn(
+        AddFiscalMonthAndYear,
+        "Fiscal MonthNYear",
+        each let
+            yearText = Text.From([Fiscal Year Number]),
+            periodText = Text.End([Fiscal Year Period], 2)
+        in
+            if yearText <> null and periodText <> null then
+                Number.FromText(yearText & periodText)
+            else
+                null,
+        Int64.Type
+    ),
+
+    // Add a numeric offset for the fiscal year from the current year.
+    AddFiscalYearOffset = Table.AddColumn(
+        AddFiscalMonthYearSortKey,
+        "Fiscal YearOffset",
+        each [Fiscal Year Number] - Date.Year(CurrentDate),
+        Int64.Type
+    ),
+
+    // Add a numeric offset for the fiscal month from the current month.
+    AddFiscalMonthOffset = Table.AddColumn(
+        AddFiscalYearOffset,
+        "Fiscal MonthOffset",
+        each
+            ([Fiscal Year Number] * 12 + Number.FromText(Text.End([Fiscal Year Period], 2))) -
+            (Date.Year(CurrentDate) * 12 + Date.Month(CurrentDate)),
+        Int64.Type
+    ),
+
+    // Add a numeric sort column for the fiscal month (1-13).
+    AddFiscalMonthSort = Table.AddColumn(
+        AddFiscalMonthOffset,
+        "Fiscal Mth Sort",
+        each Number.FromText(Text.End([Fiscal Year Period], 2)),
+        Int64.Type
+    ),
+
+    // Rename the date column to its final key name.
+    RenameCalendarDateColumn = Table.RenameColumns(
+        AddFiscalMonthSort,
+        {{"Calendar Date", "1Cal_Day.Key"}}
+    ),
+
+    // Add a column for the start of the week date, assuming Monday is the first day.
+    AddStartOfWeek = Table.AddColumn(
+        RenameCalendarDateColumn,
+        "Fiscal StartOfWeek",
+        each Date.StartOfWeek([#"1Cal_Day.Key"], Day.Monday),
+        type date
+    ),
+
+    // --- WEEK OFFSET CALCULATION ---
+    // The following steps calculate a relative week offset from the current week.
+
+    // 1. Create a distinct list of fiscal weeks with their start date.
+    GroupDataByFiscalWeek = Table.Group(
+        AddStartOfWeek,
+        {"Fiscal Year Week"},
+        {{"MinDate", each List.Min([#"1Cal_Day.Key"]), type date}}
+    ),
+    SortByWeekStartDate = Table.Sort(
+        GroupDataByFiscalWeek,
+        {{"MinDate", Order.Ascending}}
+    ),
+    AddWeekIndex = Table.AddIndexColumn(
+        SortByWeekStartDate, "WeekIndex", 0, 1
+    ),
+
+    // 2. Merge the week index back into the main calendar table.
+    MergeWeekIndex = Table.NestedJoin(
+        AddStartOfWeek, {"Fiscal Year Week"},
+        AddWeekIndex, {"Fiscal Year Week"},
+        "WeekData",
+        JoinKind.LeftOuter
+    ),
+    ExpandWeekIndexData = Table.ExpandTableColumn(
+        MergeWeekIndex,
+        "WeekData",
+        {"MinDate", "WeekIndex"},
+        {"MinDate", "WeekIndex"}
+    ),
+
+    // 3. Find the index for the current week.
+    FindCurrentDateRow = Table.SelectRows(
+        ExpandWeekIndexData,
+        each [#"1Cal_Day.Key"] = CurrentDate
+    ),
+    GetCurrentWeekIndex = if Table.IsEmpty(FindCurrentDateRow) then
+        null
+    else
+        FindCurrentDateRow{0}[WeekIndex],
+
+    // 4. Calculate the offset for each week relative to the current week.
+    AddFiscalWeekOffset = Table.AddColumn(
+        ExpandWeekIndexData,
+        "Fiscal WeekOffset",
+        each if [WeekIndex] <> null and GetCurrentWeekIndex <> null then
+            [WeekIndex] - GetCurrentWeekIndex
+        else
+            null,
+        Int64.Type
+    ),
+
+    // Remove temporary columns used for the week offset calculation.
+    RemoveTemporaryWeekColumns = Table.RemoveColumns(
+        AddFiscalWeekOffset,
+        {"MinDate", "WeekIndex"}
+    ),
+
+    // --- FINAL CLEANUP ---
+    // Set the data types for several numeric columns.
+    SetColumnTypes = Table.TransformColumnTypes(
+        RemoveTemporaryWeekColumns,
+        {
+            {"Day of Month", Int64.Type},
+            {"Month No", Int64.Type},
+            {"Comp_Fisc_Year", Int64.Type},
+            {"Comp_Fisc_Year.Key", Int64.Type},
+            {"Year", Int64.Type},
+            {"Day of Week", Int64.Type}
+        }
+    ),
+
+    // Set the data type for a date key using a specific locale.
+    SetDateTypeWithLocale = Table.TransformColumnTypes(
+        SetColumnTypes,
+        {{"Comp_Fisc_Date.Key", type date}},
+        "en-AU"
+    ),
+
+    // Rename fiscal year columns for clarity in the final model.
+    RenameFiscalYearColumns = Table.RenameColumns(
+        SetDateTypeWithLocale,
+        {
+            {"Fiscal Year", "Fiscal Year Text"},
+            {"Fiscal Year Number", "Fiscal Year"}
+        }
+    ),
+
+    // Add a 'Fiscal Half Year' column (e.g., "FY25 H1").
+    AddFiscalHalfYear = Table.AddColumn(
+        RenameFiscalYearColumns,
+        "Fiscal Half Year",
+        each let
+            yearShort = "FY" & Text.End([Fiscal Year Text], 2),
+            half = if List.Contains({"FQ1", "FQ2"}, [Fiscal Quarter]) then
+                    "H1"
+                   else
+                    "H2"
+        in
+            yearShort & " " & half,
+        type text
+    ),
+
+    // --- SEASONAL DATA MERGE ---
+    // Merge seasonal data (KSP) from another query.
+    MergeSeasonalDates = Table.NestedJoin(
+        AddFiscalHalfYear, {"Fiscal StartOfWeek"},
+        Seasonal_Dates, {"Start of week"},
+        "Seasonal_Dates",
+        JoinKind.LeftOuter
+    ),
+    ExpandSeasonalDates = Table.ExpandTableColumn(
+        MergeSeasonalDates,
+        "Seasonal_Dates",
+        {"KSP Flag", "KSP"},
+        {"KSP Flag", "KSP"}
+    ),
+
+    // Clean up KSP data by replacing blanks and adding filter-friendly columns.
+    ReplaceBlankKSPValuesWithNull = Table.ReplaceValue(
+        ExpandSeasonalDates, "", null, Replacer.ReplaceValue, {"KSP Flag", "KSP"}
+    ),
+    AddKSPFilterColumn = Table.AddColumn(
+        ReplaceBlankKSPValuesWithNull,
+        "KSP Filter",
+        each if [KSP] = null then "Non-KSP" else [KSP],
+        type text
+    ),
+    AddKSPFlagFilterColumn = Table.AddColumn(
+        AddKSPFilterColumn,
+        "KSP Flag Filter",
+        each if [KSP Flag] = null then "Non-KSP" else [KSP Flag],
+        type text
+    ),
+
+    // Add a numeric week number column (1-53).
+    AddFiscalWeekNumberOfYear = Table.AddColumn(
+        AddKSPFlagFilterColumn,
+        "Fiscal Week Number Of Year",
+        each Number.FromText(Text.End([Fiscal Week], 2)),
+        Int64.Type
+    ),
+
+    // Add a column for slicers to easily select the 'Current Month'.
+    AddMonthSelectionColumn = Table.AddColumn(
+        AddFiscalWeekNumberOfYear,
+        "Month Selection",
+        each if [Fiscal MonthOffset] = 0 then "Current Month" else [#"Fiscal Month & Year"],
+        type text
+    )
+in
+    AddMonthSelectionColumn
+
+// Seasonal_Dates
+let
+
+    // Retrieve today's date (local time)
+    CurrentDate = Date.From(DateTime.FixedLocalNow()),
+
+    // Define the file name and SharePoint site folder URL
+    File = "Seasonal Dates.xlsx",
+    Folder = "https://lionco.sharepoint.com/sites/RevenueGrowthManagementInitiative",
+    
+    // Get a list of files from the SharePoint folder
+    Source = SharePoint.Files(Folder, [ApiVersion = 15]),
+    
+    // Filter the list to locate the specific Excel file
+    FilterFile = Table.SelectRows(Source, each [Name] = File),
+    
+    // Extract the binary content of the Excel file
+    ExtractedExcel = FilterFile{[Name = File]}[Content],
+    
+    // Load the Excel workbook (each sheet/table is returned as a separate table)
+    Workbook = Excel.Workbook(ExtractedExcel, true),
+
+    // filter the table for the calendar & drill down to the content
+    FilterTable = Table.SelectRows(Workbook, each ([Kind] = "Table") and ([Name] = "tbl_Dates")),
+    DrillDownTableContents = FilterTable{0}[Data],
+  RemoveDuplicates = Table.Distinct(DrillDownTableContents, {"Anaplan Date"})
+
+in
+    RemoveDuplicates
