@@ -19,3 +19,12 @@
             Replacer.ReplaceValue, 
             Table.ColumnNames(FactAdmissionListing_)
         )
+
+    ReplaceZeroNull =
+        Table.ReplaceValue(
+            FactAdmissionListing_, 
+            0, 
+            null, 
+            Replacer.ReplaceValue, 
+            Table.ColumnNames(FactAdmissionListing_)
+        )
